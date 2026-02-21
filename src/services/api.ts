@@ -313,33 +313,80 @@ export const obrasService = {
     },
 };
 
-// ── Lançamentos (sem rota no server.ts → fallback [] para não gerar 404) ──
+// ── Lançamentos (fallback localStorage quando backend falha) ──
+const LOCAL_LANCAMENTOS_KEY = "erp_local_lancamentos";
+
+function getLocalLancamentos(companyId: string): Lancamento[] {
+    try {
+        const raw = localStorage.getItem(LOCAL_LANCAMENTOS_KEY);
+        const map: Record<string, Lancamento[]> = raw ? JSON.parse(raw) : {};
+        return map[companyId] || [];
+    } catch { return []; }
+}
+
+function setLocalLancamentos(companyId: string, list: Lancamento[]): void {
+    try {
+        const raw = localStorage.getItem(LOCAL_LANCAMENTOS_KEY);
+        const map: Record<string, Lancamento[]> = raw ? JSON.parse(raw) : {};
+        map[companyId] = list;
+        localStorage.setItem(LOCAL_LANCAMENTOS_KEY, JSON.stringify(map));
+    } catch { }
+}
+
 export const lancamentosService = {
-    async getAll(_companyId: string): Promise<Lancamento[]> {
+    async getAll(companyId: string): Promise<Lancamento[]> {
         try {
             return await fetchAPI<Lancamento[]>(`${API_BASE}/lancamentos`);
         } catch {
-            return [];
+            return getLocalLancamentos(companyId);
         }
     },
     async getById(id: string, companyId: string): Promise<Lancamento | undefined> {
         try {
             return await fetchAPI<Lancamento>(`${API_BASE}/lancamentos/${id}`);
-        } catch { return undefined; }
+        } catch {
+            return getLocalLancamentos(companyId).find((l) => l.id === id);
+        }
     },
     async create(item: any): Promise<Lancamento> {
-        return await fetchAPI<Lancamento>(`${API_BASE}/lancamentos`, { method: "POST", body: JSON.stringify(item) });
+        const companyId = item.companyId;
+        try {
+            return await fetchAPI<Lancamento>(`${API_BASE}/lancamentos`, { method: "POST", body: JSON.stringify(item) });
+        } catch {
+            const id = "local-lanc-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+            const now = new Date().toISOString();
+            const lancamento: Lancamento = {
+                ...item,
+                id,
+                createdAt: now,
+            };
+            const list = getLocalLancamentos(companyId);
+            list.unshift(lancamento);
+            setLocalLancamentos(companyId, list);
+            return lancamento;
+        }
     },
-    async update(id: string, _companyId: string, updates: Partial<Lancamento>): Promise<Lancamento | undefined> {
+    async update(id: string, companyId: string, updates: Partial<Lancamento>): Promise<Lancamento | undefined> {
         try {
             return await fetchAPI<Lancamento>(`${API_BASE}/lancamentos/${id}`, { method: "PUT", body: JSON.stringify(updates) });
-        } catch { return undefined; }
+        } catch {
+            const list = getLocalLancamentos(companyId);
+            const idx = list.findIndex((l) => l.id === id);
+            if (idx === -1) return undefined;
+            list[idx] = { ...list[idx], ...updates };
+            setLocalLancamentos(companyId, list);
+            return list[idx];
+        }
     },
-    async delete(id: string, _companyId: string): Promise<boolean> {
+    async delete(id: string, companyId: string): Promise<boolean> {
         try {
             await fetchAPI(`${API_BASE}/lancamentos/${id}`, { method: "DELETE" });
             return true;
-        } catch { return false; }
+        } catch {
+            const list = getLocalLancamentos(companyId).filter((l) => l.id !== id);
+            setLocalLancamentos(companyId, list);
+            return true;
+        }
     },
 };
 
@@ -498,29 +545,61 @@ export const fornecedoresService = {
     },
 };
 
-// ── Relatórios Semanais (fallback para não gerar 404) ─────
+// ── Relatórios Semanais (fallback localStorage quando backend falha) ─────
+const LOCAL_RELATORIOS_KEY = "erp_local_relatorios";
+
+function getLocalRelatorios(companyId: string): RelatorioSemanal[] {
+    try {
+        const raw = localStorage.getItem(LOCAL_RELATORIOS_KEY);
+        const map: Record<string, RelatorioSemanal[]> = raw ? JSON.parse(raw) : {};
+        return map[companyId] || [];
+    } catch { return []; }
+}
+
+function setLocalRelatorios(companyId: string, list: RelatorioSemanal[]): void {
+    try {
+        const raw = localStorage.getItem(LOCAL_RELATORIOS_KEY);
+        const map: Record<string, RelatorioSemanal[]> = raw ? JSON.parse(raw) : {};
+        map[companyId] = list;
+        localStorage.setItem(LOCAL_RELATORIOS_KEY, JSON.stringify(map));
+    } catch { }
+}
+
 export const relatoriosService = {
-    async getAll(_companyId: string): Promise<RelatorioSemanal[]> {
-        try { return await fetchAPI<RelatorioSemanal[]>(`${API_BASE}/relatorios`); } catch { return []; }
+    async getAll(companyId: string): Promise<RelatorioSemanal[]> {
+        try { return await fetchAPI<RelatorioSemanal[]>(`${API_BASE}/relatorios`); }
+        catch { return getLocalRelatorios(companyId); }
     },
-    async getById(id: string, _companyId: string): Promise<RelatorioSemanal | undefined> {
-        try { return await fetchAPI<RelatorioSemanal>(`${API_BASE}/relatorios/${id}`); } catch { return undefined; }
+    async getById(id: string, companyId: string): Promise<RelatorioSemanal | undefined> {
+        try { return await fetchAPI<RelatorioSemanal>(`${API_BASE}/relatorios/${id}`); }
+        catch { return getLocalRelatorios(companyId).find((r) => r.id === id); }
     },
     async create(item: any): Promise<RelatorioSemanal> {
+        const companyId = item.companyId;
         try { return await fetchAPI<RelatorioSemanal>(`${API_BASE}/relatorios`, { method: "POST", body: JSON.stringify(item) }); }
-        catch { return { ...item, id: "local-rel-" + Date.now() } as RelatorioSemanal; }
+        catch {
+            const created: RelatorioSemanal = { ...item, id: "local-rel-" + Date.now(), createdAt: new Date().toISOString() };
+            const list = getLocalRelatorios(companyId);
+            list.unshift(created);
+            setLocalRelatorios(companyId, list);
+            return created;
+        }
     },
     async update(id: string, _companyId: string, updates: Partial<RelatorioSemanal>): Promise<RelatorioSemanal | undefined> {
         try { return await fetchAPI<RelatorioSemanal>(`${API_BASE}/relatorios/${id}`, { method: "PUT", body: JSON.stringify(updates) }); }
         catch { return undefined; }
     },
-    async delete(id: string, _companyId: string): Promise<boolean> {
+    async delete(id: string, companyId: string): Promise<boolean> {
         try { await fetchAPI(`${API_BASE}/relatorios/${id}`, { method: "DELETE" }); return true; }
-        catch { return false; }
+        catch {
+            const list = getLocalRelatorios(companyId).filter((r) => r.id !== id);
+            setLocalRelatorios(companyId, list);
+            return true;
+        }
     },
-    async getByObra(obraId: string, _companyId: string): Promise<RelatorioSemanal[]> {
+    async getByObra(obraId: string, companyId: string): Promise<RelatorioSemanal[]> {
         try { return await fetchAPI<RelatorioSemanal[]>(`${API_BASE}/relatorios?obraId=${obraId}`); }
-        catch { return []; }
+        catch { return getLocalRelatorios(companyId).filter((r) => !obraId || r.obraId === obraId); }
     },
     hasWeekConflict(_obraId: string, _companyId: string, _semanaInicio: string, _semanaFim: string, _excludeId?: string): boolean {
         return false;
@@ -530,71 +609,152 @@ export const relatoriosService = {
     },
 };
 
-// ── Medições (fallback para não gerar 404) ─────────────────
+// ── Medições (fallback localStorage quando backend falha) ─────────────────
+const LOCAL_MEDICOES_KEY = "erp_local_medicoes";
+
+function getLocalMedicoes(companyId: string): Medicao[] {
+    try {
+        const raw = localStorage.getItem(LOCAL_MEDICOES_KEY);
+        const map: Record<string, Medicao[]> = raw ? JSON.parse(raw) : {};
+        return map[companyId] || [];
+    } catch { return []; }
+}
+
+function setLocalMedicoes(companyId: string, list: Medicao[]): void {
+    try {
+        const raw = localStorage.getItem(LOCAL_MEDICOES_KEY);
+        const map: Record<string, Medicao[]> = raw ? JSON.parse(raw) : {};
+        map[companyId] = list;
+        localStorage.setItem(LOCAL_MEDICOES_KEY, JSON.stringify(map));
+    } catch { }
+}
+
 export const medicoesService = {
-    async getAll(_companyId: string): Promise<Medicao[]> {
-        try { return await fetchAPI<Medicao[]>(`${API_BASE}/medicoes`); } catch { return []; }
+    async getAll(companyId: string): Promise<Medicao[]> {
+        try { return await fetchAPI<Medicao[]>(`${API_BASE}/medicoes`); }
+        catch { return getLocalMedicoes(companyId); }
     },
-    async getById(id: string, _companyId: string): Promise<Medicao | undefined> {
-        try { return await fetchAPI<Medicao>(`${API_BASE}/medicoes/${id}`); } catch { return undefined; }
+    async getById(id: string, companyId: string): Promise<Medicao | undefined> {
+        try { return await fetchAPI<Medicao>(`${API_BASE}/medicoes/${id}`); }
+        catch { return getLocalMedicoes(companyId).find((m) => m.id === id); }
     },
     async create(item: any): Promise<Medicao> {
+        const companyId = item.companyId;
         try { return await fetchAPI<Medicao>(`${API_BASE}/medicoes`, { method: "POST", body: JSON.stringify(item) }); }
-        catch { return { ...item, id: "local-med-" + Date.now() } as Medicao; }
+        catch {
+            const created: Medicao = { ...item, id: "local-med-" + Date.now(), createdAt: new Date().toISOString() };
+            const list = getLocalMedicoes(companyId);
+            list.unshift(created);
+            setLocalMedicoes(companyId, list);
+            return created;
+        }
     },
-    async update(id: string, _companyId: string, updates: Partial<Medicao>): Promise<Medicao | undefined> {
+    async update(id: string, companyId: string, updates: Partial<Medicao>): Promise<Medicao | undefined> {
         try { return await fetchAPI<Medicao>(`${API_BASE}/medicoes/${id}`, { method: "PUT", body: JSON.stringify(updates) }); }
-        catch { return undefined; }
+        catch {
+            const list = getLocalMedicoes(companyId);
+            const idx = list.findIndex((m) => m.id === id);
+            if (idx === -1) return undefined;
+            list[idx] = { ...list[idx], ...updates };
+            setLocalMedicoes(companyId, list);
+            return list[idx];
+        }
     },
-    async delete(id: string, _companyId: string): Promise<boolean> {
+    async delete(id: string, companyId: string): Promise<boolean> {
         try { await fetchAPI(`${API_BASE}/medicoes/${id}`, { method: "DELETE" }); return true; }
-        catch { return false; }
+        catch {
+            const list = getLocalMedicoes(companyId).filter((m) => m.id !== id);
+            setLocalMedicoes(companyId, list);
+            return true;
+        }
     },
-    async getByObra(obraId: string, _companyId: string): Promise<Medicao[]> {
+    async getByObra(obraId: string, companyId: string): Promise<Medicao[]> {
         try { return await fetchAPI<Medicao[]>(`${API_BASE}/medicoes?obraId=${obraId}`); }
-        catch { return []; }
+        catch { return getLocalMedicoes(companyId).filter((m) => !obraId || m.obraId === obraId); }
     },
-    async aprovarMedicao(id: string, _companyId: string): Promise<Medicao | undefined> {
+    async aprovarMedicao(id: string, companyId: string): Promise<Medicao | undefined> {
         try { return await fetchAPI<Medicao>(`${API_BASE}/medicoes/${id}/aprovar`, { method: "POST" }); }
-        catch { return undefined; }
+        catch { return this.update(id, companyId, { status: "Aprovado" }); }
     },
-    async pagarMedicao(id: string, _companyId: string): Promise<{ medicao: Medicao; lancamento: Lancamento } | undefined> {
+    async pagarMedicao(id: string, companyId: string): Promise<{ medicao: Medicao; lancamento: Lancamento } | undefined> {
         try { return await fetchAPI(`${API_BASE}/medicoes/${id}/pagar`, { method: "POST" }); }
-        catch { return undefined; }
+        catch {
+            const medicao = await this.update(id, companyId, { status: "Pago" });
+            return medicao ? { medicao, lancamento: {} as Lancamento } : undefined;
+        }
     },
 };
 
-// ── Comentários (fallback para não gerar 404) ──────────────
+// ── Comentários (fallback localStorage quando backend falha) ──────────────
+const LOCAL_COMENTARIOS_KEY = "erp_local_comentarios";
+
+function getLocalComentarios(companyId: string): ComentarioObra[] {
+    try {
+        const raw = localStorage.getItem(LOCAL_COMENTARIOS_KEY);
+        const map: Record<string, ComentarioObra[]> = raw ? JSON.parse(raw) : {};
+        return map[companyId] || [];
+    } catch { return []; }
+}
+
+function setLocalComentarios(companyId: string, list: ComentarioObra[]): void {
+    try {
+        const raw = localStorage.getItem(LOCAL_COMENTARIOS_KEY);
+        const map: Record<string, ComentarioObra[]> = raw ? JSON.parse(raw) : {};
+        map[companyId] = list;
+        localStorage.setItem(LOCAL_COMENTARIOS_KEY, JSON.stringify(map));
+    } catch { }
+}
+
 export const comentariosService = {
-    async getAll(_companyId: string): Promise<ComentarioObra[]> {
-        try { return await fetchAPI<ComentarioObra[]>(`${API_BASE}/comentarios`); } catch { return []; }
+    async getAll(companyId: string): Promise<ComentarioObra[]> {
+        try { return await fetchAPI<ComentarioObra[]>(`${API_BASE}/comentarios`); }
+        catch { return getLocalComentarios(companyId); }
     },
-    async getById(id: string, _companyId: string): Promise<ComentarioObra | undefined> {
-        try { return await fetchAPI<ComentarioObra>(`${API_BASE}/comentarios/${id}`); } catch { return undefined; }
+    async getById(id: string, companyId: string): Promise<ComentarioObra | undefined> {
+        try { return await fetchAPI<ComentarioObra>(`${API_BASE}/comentarios/${id}`); }
+        catch { return getLocalComentarios(companyId).find((c) => c.id === id); }
     },
     async create(item: any): Promise<ComentarioObra> {
+        const companyId = item.companyId;
         try { return await fetchAPI<ComentarioObra>(`${API_BASE}/comentarios`, { method: "POST", body: JSON.stringify(item) }); }
-        catch { return { ...item, id: "local-com-" + Date.now() } as ComentarioObra; }
+        catch {
+            const created: ComentarioObra = { ...item, id: "local-com-" + Date.now() };
+            const list = getLocalComentarios(companyId);
+            list.unshift(created);
+            setLocalComentarios(companyId, list);
+            return created;
+        }
     },
-    async update(id: string, _companyId: string, updates: Partial<ComentarioObra>): Promise<ComentarioObra | undefined> {
+    async update(id: string, companyId: string, updates: Partial<ComentarioObra>): Promise<ComentarioObra | undefined> {
         try { return await fetchAPI<ComentarioObra>(`${API_BASE}/comentarios/${id}`, { method: "PUT", body: JSON.stringify(updates) }); }
-        catch { return undefined; }
+        catch {
+            const list = getLocalComentarios(companyId);
+            const idx = list.findIndex((c) => c.id === id);
+            if (idx === -1) return undefined;
+            list[idx] = { ...list[idx], ...updates };
+            setLocalComentarios(companyId, list);
+            return list[idx];
+        }
     },
-    async delete(id: string, _companyId: string): Promise<boolean> {
+    async delete(id: string, companyId: string): Promise<boolean> {
         try { await fetchAPI(`${API_BASE}/comentarios/${id}`, { method: "DELETE" }); return true; }
-        catch { return false; }
+        catch {
+            const list = getLocalComentarios(companyId).filter((c) => c.id !== id);
+            setLocalComentarios(companyId, list);
+            return true;
+        }
     },
-    async getByObra(obraId: string, _companyId: string): Promise<ComentarioObra[]> {
+    async getByObra(obraId: string, companyId: string): Promise<ComentarioObra[]> {
         try { return await fetchAPI<ComentarioObra[]>(`${API_BASE}/comentarios?obraId=${obraId}`); }
-        catch { return []; }
+        catch { return getLocalComentarios(companyId).filter((c) => (!obraId || c.obraId === obraId) && !c.oculto); }
     },
-    async getAllByObra(obraId: string, _companyId: string): Promise<ComentarioObra[]> {
+    async getAllByObra(obraId: string, companyId: string): Promise<ComentarioObra[]> {
         try { return await fetchAPI<ComentarioObra[]>(`${API_BASE}/comentarios?obraId=${obraId}&includeHidden=true`); }
-        catch { return []; }
+        catch { return getLocalComentarios(companyId).filter((c) => c.obraId === obraId); }
     },
-    async softDelete(id: string, _companyId: string): Promise<ComentarioObra | undefined> {
+    async softDelete(id: string, companyId: string): Promise<ComentarioObra | undefined> {
         try { return await fetchAPI<ComentarioObra>(`${API_BASE}/comentarios/${id}/ocultar`, { method: "POST" }); }
-        catch { return undefined; }
+        catch { return this.update(id, companyId, { oculto: true }); }
     },
     async createComment(item: any): Promise<ComentarioObra> {
         return this.create(item);
@@ -621,35 +781,77 @@ export const financeiroExecutivoService = {
     },
 };
 
-// ── Etapas (fallback para não gerar 404) ───────────────────
+// ── Etapas (fallback localStorage quando backend falha) ───────────
+const LOCAL_ETAPAS_KEY = "erp_local_etapas";
+
+function getLocalEtapas(companyId: string): Etapa[] {
+    try {
+        const raw = localStorage.getItem(LOCAL_ETAPAS_KEY);
+        const map: Record<string, Etapa[]> = raw ? JSON.parse(raw) : {};
+        return map[companyId] || [];
+    } catch { return []; }
+}
+
+function setLocalEtapas(companyId: string, list: Etapa[]): void {
+    try {
+        const raw = localStorage.getItem(LOCAL_ETAPAS_KEY);
+        const map: Record<string, Etapa[]> = raw ? JSON.parse(raw) : {};
+        map[companyId] = list;
+        localStorage.setItem(LOCAL_ETAPAS_KEY, JSON.stringify(map));
+    } catch { }
+}
+
 export const etapasService = {
-    async getAll(_companyId: string): Promise<Etapa[]> {
-        try { return await fetchAPI<Etapa[]>(`${API_BASE}/etapas`); } catch { return []; }
+    async getAll(companyId: string): Promise<Etapa[]> {
+        try { return await fetchAPI<Etapa[]>(`${API_BASE}/etapas`); }
+        catch { return getLocalEtapas(companyId); }
     },
-    async getById(id: string, _companyId: string): Promise<Etapa | undefined> {
-        try { return await fetchAPI<Etapa>(`${API_BASE}/etapas/${id}`); } catch { return undefined; }
+    async getById(id: string, companyId: string): Promise<Etapa | undefined> {
+        try { return await fetchAPI<Etapa>(`${API_BASE}/etapas/${id}`); }
+        catch { return getLocalEtapas(companyId).find((e) => e.id === id); }
     },
     async create(item: any): Promise<Etapa> {
+        const companyId = item.companyId;
         try { return await fetchAPI<Etapa>(`${API_BASE}/etapas`, { method: "POST", body: JSON.stringify(item) }); }
-        catch { return { ...item, id: "local-etapa-" + Date.now() } as Etapa; }
+        catch {
+            const created: Etapa = { ...item, id: "local-etapa-" + Date.now(), createdAt: new Date().toISOString() };
+            const list = getLocalEtapas(companyId);
+            list.unshift(created);
+            setLocalEtapas(companyId, list);
+            return created;
+        }
     },
-    async update(id: string, _companyId: string, updates: Partial<Etapa>): Promise<Etapa | undefined> {
+    async update(id: string, companyId: string, updates: Partial<Etapa>): Promise<Etapa | undefined> {
         try { return await fetchAPI<Etapa>(`${API_BASE}/etapas/${id}`, { method: "PUT", body: JSON.stringify(updates) }); }
-        catch { return undefined; }
+        catch {
+            const list = getLocalEtapas(companyId);
+            const idx = list.findIndex((e) => e.id === id);
+            if (idx === -1) return undefined;
+            list[idx] = { ...list[idx], ...updates };
+            setLocalEtapas(companyId, list);
+            return list[idx];
+        }
     },
-    async delete(id: string, _companyId: string): Promise<boolean> {
+    async delete(id: string, companyId: string): Promise<boolean> {
         try { await fetchAPI(`${API_BASE}/etapas/${id}`, { method: "DELETE" }); return true; }
-        catch { return false; }
+        catch {
+            const list = getLocalEtapas(companyId).filter((e) => e.id !== id);
+            setLocalEtapas(companyId, list);
+            return true;
+        }
     },
-    async getByObra(obraId: string, _companyId: string): Promise<Etapa[]> {
+    async getByObra(obraId: string, companyId: string): Promise<Etapa[]> {
         try { return await fetchAPI<Etapa[]>(`${API_BASE}/etapas?obraId=${obraId}`); }
-        catch { return []; }
+        catch { return getLocalEtapas(companyId).filter((e) => !obraId || e.obraId === obraId); }
     },
-    async somaPercentualPrevisto(obraId: string, _companyId: string, excludeId?: string): Promise<number> {
+    async somaPercentualPrevisto(obraId: string, companyId: string, excludeId?: string): Promise<number> {
         try {
             const result = await fetchAPI<{ soma: number }>(`${API_BASE}/etapas/soma-percentual?obraId=${obraId}${excludeId ? `&excludeId=${excludeId}` : ""}`);
             return result.soma;
-        } catch { return 0; }
+        } catch {
+            const list = getLocalEtapas(companyId).filter((e) => e.obraId === obraId && e.id !== excludeId);
+            return list.reduce((acc, e) => acc + (e.percentualPrevisto || 0), 0);
+        }
     },
     async createWithValidation(item: any): Promise<Etapa> {
         return this.create(item);
@@ -661,44 +863,83 @@ export const etapasService = {
         return this.delete(id, companyId);
     },
     recalcularProgressoObra(_obraId: string, _companyId: string): void { },
-    async verificarAtraso(obraId: string, _companyId: string): Promise<Etapa[]> {
-        const all = await this.getByObra(obraId, _companyId);
+    async verificarAtraso(obraId: string, companyId: string): Promise<Etapa[]> {
+        const all = await this.getByObra(obraId, companyId);
         const today = new Date().toISOString().split("T")[0];
         return all.filter((e) => e.dataFim < today && e.percentualExecutado < 100);
     },
 };
 
-// ── Lista de Compras (fallback para não gerar 404) ─────────
+// ── Lista de Compras (fallback localStorage quando backend falha) ─────────
+const LOCAL_LISTACOMPRAS_KEY = "erp_local_listacompras";
+
+function getLocalListaCompras(companyId: string): ListaCompra[] {
+    try {
+        const raw = localStorage.getItem(LOCAL_LISTACOMPRAS_KEY);
+        const map: Record<string, ListaCompra[]> = raw ? JSON.parse(raw) : {};
+        return map[companyId] || [];
+    } catch { return []; }
+}
+
+function setLocalListaCompras(companyId: string, list: ListaCompra[]): void {
+    try {
+        const raw = localStorage.getItem(LOCAL_LISTACOMPRAS_KEY);
+        const map: Record<string, ListaCompra[]> = raw ? JSON.parse(raw) : {};
+        map[companyId] = list;
+        localStorage.setItem(LOCAL_LISTACOMPRAS_KEY, JSON.stringify(map));
+    } catch { }
+}
+
 export const listaComprasService = {
-    async getAll(_companyId: string): Promise<ListaCompra[]> {
-        try { return await fetchAPI<ListaCompra[]>(`${API_BASE}/lista-compras`); } catch { return []; }
+    async getAll(companyId: string): Promise<ListaCompra[]> {
+        try { return await fetchAPI<ListaCompra[]>(`${API_BASE}/lista-compras`); }
+        catch { return getLocalListaCompras(companyId); }
     },
-    async getById(id: string, _companyId: string): Promise<ListaCompra | undefined> {
-        try { return await fetchAPI<ListaCompra>(`${API_BASE}/lista-compras/${id}`); } catch { return undefined; }
+    async getById(id: string, companyId: string): Promise<ListaCompra | undefined> {
+        try { return await fetchAPI<ListaCompra>(`${API_BASE}/lista-compras/${id}`); }
+        catch { return getLocalListaCompras(companyId).find((c) => c.id === id); }
     },
     async create(item: any): Promise<ListaCompra> {
+        const companyId = item.companyId;
         try { return await fetchAPI<ListaCompra>(`${API_BASE}/lista-compras`, { method: "POST", body: JSON.stringify(item) }); }
-        catch { return { ...item, id: "local-lc-" + Date.now() } as ListaCompra; }
+        catch {
+            const created: ListaCompra = { ...item, id: "local-lc-" + Date.now(), createdAt: new Date().toISOString() };
+            const list = getLocalListaCompras(companyId);
+            list.unshift(created);
+            setLocalListaCompras(companyId, list);
+            return created;
+        }
     },
-    async update(id: string, _companyId: string, updates: Partial<ListaCompra>): Promise<ListaCompra | undefined> {
+    async update(id: string, companyId: string, updates: Partial<ListaCompra>): Promise<ListaCompra | undefined> {
         try { return await fetchAPI<ListaCompra>(`${API_BASE}/lista-compras/${id}`, { method: "PUT", body: JSON.stringify(updates) }); }
-        catch { return undefined; }
+        catch {
+            const list = getLocalListaCompras(companyId);
+            const idx = list.findIndex((c) => c.id === id);
+            if (idx === -1) return undefined;
+            list[idx] = { ...list[idx], ...updates };
+            setLocalListaCompras(companyId, list);
+            return list[idx];
+        }
     },
-    async delete(id: string, _companyId: string): Promise<boolean> {
+    async delete(id: string, companyId: string): Promise<boolean> {
         try { await fetchAPI(`${API_BASE}/lista-compras/${id}`, { method: "DELETE" }); return true; }
-        catch { return false; }
+        catch {
+            const list = getLocalListaCompras(companyId).filter((c) => c.id !== id);
+            setLocalListaCompras(companyId, list);
+            return true;
+        }
     },
-    async getByObra(obraId: string, _companyId: string): Promise<ListaCompra[]> {
+    async getByObra(obraId: string, companyId: string): Promise<ListaCompra[]> {
         try { return await fetchAPI<ListaCompra[]>(`${API_BASE}/lista-compras?obraId=${obraId}`); }
-        catch { return []; }
+        catch { return getLocalListaCompras(companyId).filter((c) => !obraId || c.obraId === obraId); }
     },
     async projecaoDesembolso(obraId: string, _companyId: string) {
         try { return await fetchAPI(`${API_BASE}/lista-compras/projecao?obraId=${obraId}`); }
         catch { return null; }
     },
-    async marcarComprado(id: string, _companyId: string): Promise<ListaCompra | undefined> {
+    async marcarComprado(id: string, companyId: string): Promise<ListaCompra | undefined> {
         try { return await fetchAPI<ListaCompra>(`${API_BASE}/lista-compras/${id}/comprado`, { method: "POST" }); }
-        catch { return undefined; }
+        catch { return this.update(id, companyId, { status: "Comprado" }); }
     },
     async getComprasFuturas(obraId: string, companyId: string): Promise<ListaCompra[]> {
         const all = await this.getByObra(obraId, companyId);
@@ -769,7 +1010,7 @@ export const cotacoesService = {
     },
     async getByObra(obraId: string, companyId: string): Promise<Cotacao[]> {
         try { return await fetchAPI<Cotacao[]>(`${API_BASE}/cotacoes?obraId=${obraId}`); }
-        catch { return getLocalCotacoes(companyId).filter((c) => c.obraId === obraId); }
+        catch { return getLocalCotacoes(companyId).filter((c) => !obraId || c.obraId === obraId); }
     },
     async getByDescricao(obraId: string, companyId: string, descricao: string): Promise<Cotacao[]> {
         const all = await this.getByObra(obraId, companyId);
@@ -796,29 +1037,68 @@ export const cotacoesService = {
     },
 };
 
-// ── Notas Fiscais (fallback para não gerar 404) ────────────
+// ── Notas Fiscais (fallback localStorage quando backend falha) ──────────
+const LOCAL_NOTASFISCAIS_KEY = "erp_local_notasfiscais";
+
+function getLocalNotasFiscais(companyId: string): NotaFiscal[] {
+    try {
+        const raw = localStorage.getItem(LOCAL_NOTASFISCAIS_KEY);
+        const map: Record<string, NotaFiscal[]> = raw ? JSON.parse(raw) : {};
+        return map[companyId] || [];
+    } catch { return []; }
+}
+
+function setLocalNotasFiscais(companyId: string, list: NotaFiscal[]): void {
+    try {
+        const raw = localStorage.getItem(LOCAL_NOTASFISCAIS_KEY);
+        const map: Record<string, NotaFiscal[]> = raw ? JSON.parse(raw) : {};
+        map[companyId] = list;
+        localStorage.setItem(LOCAL_NOTASFISCAIS_KEY, JSON.stringify(map));
+    } catch { }
+}
+
 export const notasFiscaisService = {
-    async getAll(_companyId: string): Promise<NotaFiscal[]> {
-        try { return await fetchAPI<NotaFiscal[]>(`${API_BASE}/notas-fiscais`); } catch { return []; }
+    async getAll(companyId: string): Promise<NotaFiscal[]> {
+        try { return await fetchAPI<NotaFiscal[]>(`${API_BASE}/notas-fiscais`); }
+        catch { return getLocalNotasFiscais(companyId); }
     },
-    async getById(id: string, _companyId: string): Promise<NotaFiscal | undefined> {
-        try { return await fetchAPI<NotaFiscal>(`${API_BASE}/notas-fiscais/${id}`); } catch { return undefined; }
+    async getById(id: string, companyId: string): Promise<NotaFiscal | undefined> {
+        try { return await fetchAPI<NotaFiscal>(`${API_BASE}/notas-fiscais/${id}`); }
+        catch { return getLocalNotasFiscais(companyId).find((n) => n.id === id); }
     },
     async create(item: any): Promise<NotaFiscal> {
+        const companyId = item.companyId;
         try { return await fetchAPI<NotaFiscal>(`${API_BASE}/notas-fiscais`, { method: "POST", body: JSON.stringify(item) }); }
-        catch { return { ...item, id: "local-nf-" + Date.now() } as NotaFiscal; }
+        catch {
+            const created: NotaFiscal = { ...item, id: "local-nf-" + Date.now(), createdAt: new Date().toISOString() };
+            const list = getLocalNotasFiscais(companyId);
+            list.unshift(created);
+            setLocalNotasFiscais(companyId, list);
+            return created;
+        }
     },
-    async update(id: string, _companyId: string, updates: Partial<NotaFiscal>): Promise<NotaFiscal | undefined> {
+    async update(id: string, companyId: string, updates: Partial<NotaFiscal>): Promise<NotaFiscal | undefined> {
         try { return await fetchAPI<NotaFiscal>(`${API_BASE}/notas-fiscais/${id}`, { method: "PUT", body: JSON.stringify(updates) }); }
-        catch { return undefined; }
+        catch {
+            const list = getLocalNotasFiscais(companyId);
+            const idx = list.findIndex((n) => n.id === id);
+            if (idx === -1) return undefined;
+            list[idx] = { ...list[idx], ...updates };
+            setLocalNotasFiscais(companyId, list);
+            return list[idx];
+        }
     },
-    async delete(id: string, _companyId: string): Promise<boolean> {
+    async delete(id: string, companyId: string): Promise<boolean> {
         try { await fetchAPI(`${API_BASE}/notas-fiscais/${id}`, { method: "DELETE" }); return true; }
-        catch { return false; }
+        catch {
+            const list = getLocalNotasFiscais(companyId).filter((n) => n.id !== id);
+            setLocalNotasFiscais(companyId, list);
+            return true;
+        }
     },
-    async getByObra(obraId: string, _companyId: string): Promise<NotaFiscal[]> {
+    async getByObra(obraId: string, companyId: string): Promise<NotaFiscal[]> {
         try { return await fetchAPI<NotaFiscal[]>(`${API_BASE}/notas-fiscais?obraId=${obraId}`); }
-        catch { return []; }
+        catch { return getLocalNotasFiscais(companyId).filter((n) => !obraId || n.obraId === obraId); }
     },
     async filtrarPorPeriodo(obraId: string, companyId: string, inicio: string, fim: string): Promise<NotaFiscal[]> {
         const all = await this.getByObra(obraId, companyId);

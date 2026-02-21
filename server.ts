@@ -1,21 +1,52 @@
 import express from "express";
-import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import path from "path";
+import dotenv from "dotenv";
+import { corsMiddleware, helmetMiddleware, generalLimiter, loginLimiter, registerLimiter } from "./server/middlewares/security";
+import { errorHandler } from "./server/middlewares/errorHandler";
+import { requireAdmin } from "./server/middlewares/authorization";
+import { loginSchema, registerSchema } from "./server/schemas/auth";
+import { createObraSchema, updateObraSchema } from "./server/schemas/obra";
+import { createClienteSchema, updateClienteSchema } from "./server/schemas/cliente";
+import { createFornecedorSchema, updateFornecedorSchema } from "./server/schemas/fornecedor";
+import { createUserSchema, updateUserSchema } from "./server/schemas/user";
+import { getPaginationParams } from "./server/utils/pagination";
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
-const PORT = 3001;
-const JWT_SECRET = "erp-secret-key-change-in-production";
+const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error("JWT_SECRET deve ser configurado em produção");
+  }
+  console.warn("⚠️ Usando JWT_SECRET padrão (apenas desenvolvimento)");
+  return "erp-secret-key-change-in-production";
+})();
 
 // Initialize Prisma
 const prisma = new PrismaClient({
-    log: ['error', 'warn'],
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
 });
 
-app.use(cors());
+// Check database connection
+prisma.$connect()
+  .then(() => {
+    console.log("✅ Conectado ao banco de dados.");
+  })
+  .catch((err) => {
+    console.error("❌ Erro ao conectar ao banco de dados:", err.message);
+    console.warn("⚠️ O servidor continuará rodando, mas chamadas à API que dependem do banco falharão.");
+  });
+
+// Security middlewares
+app.use(helmetMiddleware);
+app.use(corsMiddleware);
 app.use(express.json({ limit: "10mb" }));
+app.use('/api', generalLimiter);
 
 // Auth middleware
 interface AuthPayload {
@@ -52,13 +83,18 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
 
 // ============ AUTH ROUTES ============
 
-app.post("/auth/login", async (req, res) => {
+app.post("/auth/login", loginLimiter, async (req, res) => {
     try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: "Email e senha são obrigatórios." });
+        // Validar input com Zod
+        const validation = loginSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
         }
+
+        const { email, password } = validation.data;
 
         const user = await prisma.user.findUnique({
             where: { email },
@@ -79,7 +115,7 @@ app.post("/auth/login", async (req, res) => {
             companyId: user.companyId,
             email: user.email,
             name: user.name,
-            role: "admin"
+            role: user.role || "user"
         }, JWT_SECRET, { expiresIn: "8h" });
 
         res.json({
@@ -89,7 +125,7 @@ app.post("/auth/login", async (req, res) => {
                 name: user.name,
                 email: user.email,
                 companyId: user.companyId,
-                role: "admin"
+                role: user.role || "user"
             }
         });
     } catch {
@@ -97,13 +133,18 @@ app.post("/auth/login", async (req, res) => {
     }
 });
 
-app.post("/auth/register", async (req, res) => {
+app.post("/auth/register", registerLimiter, async (req, res) => {
     try {
-        const { companyName, companyCnpj, name, email, password } = req.body;
-
-        if (!name || !email || !password) {
-            return res.status(400).json({ error: "Nome, email e senha são obrigatórios." });
+        // Validar input com Zod
+        const validation = registerSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
         }
+
+        const { companyName, companyCnpj, name, email, password } = validation.data;
 
         const existing = await prisma.user.findUnique({ where: { email } });
         if (existing) {
@@ -145,7 +186,9 @@ app.post("/auth/register", async (req, res) => {
             companyId: user.companyId
         });
     } catch (err: any) {
-        console.error("Register error:", err);
+        if (process.env.NODE_ENV === 'development') {
+            console.error("Register error:", err);
+        }
         res.status(500).json({ error: "Erro ao registrar." });
     }
 });
@@ -154,11 +197,29 @@ app.post("/auth/register", async (req, res) => {
 
 app.get("/api/obras", authMiddleware, async (req, res) => {
     try {
-        const obras = await prisma.obra.findMany({
-            where: { companyId: req.auth!.companyId },
-            orderBy: { createdAt: "desc" }
+        const { page, limit, skip } = getPaginationParams(req);
+        
+        const [obras, total] = await Promise.all([
+            prisma.obra.findMany({
+                where: { companyId: req.auth!.companyId },
+                orderBy: { createdAt: "desc" },
+                skip,
+                take: limit
+            }),
+            prisma.obra.count({
+                where: { companyId: req.auth!.companyId }
+            })
+        ]);
+        
+        res.json({
+            data: obras,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
         });
-        res.json(obras);
     } catch {
         res.status(500).json({ error: "Erro ao buscar obras." });
     }
@@ -185,51 +246,58 @@ app.get("/api/obras/:id", authMiddleware, async (req, res) => {
 
 app.post("/api/obras", authMiddleware, async (req, res) => {
     try {
-        const {
-            name, materialsCost, laborCost, totalCost, progress,
-            startDate, endDate, status, client, address,
-            cep, number: num, complement, description, imageUrl
-        } = req.body;
-
-        if (!name) {
-            return res.status(400).json({ error: "Nome da obra é obrigatório." });
+        // Validar input com Zod
+        const validation = createObraSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
         }
+
+        const data = validation.data;
+        const totalCost = data.totalCost || (data.materialsCost || 0) + (data.laborCost || 0);
 
         const obra = await prisma.obra.create({
             data: {
-                name: name.trim(),
-                materialsCost: parseFloat(materialsCost) || 0,
-                laborCost: parseFloat(laborCost) || 0,
-                totalCost: parseFloat(totalCost) || parseFloat(materialsCost || 0) + parseFloat(laborCost || 0),
-                progress: parseInt(progress) || 0,
-                startDate: startDate || null,
-                endDate: endDate || null,
-                status: status || "Em andamento",
+                name: data.name.trim(),
+                materialsCost: data.materialsCost || 0,
+                laborCost: data.laborCost || 0,
+                totalCost,
+                progress: data.progress || 0,
+                startDate: data.startDate || null,
+                endDate: data.endDate || null,
+                status: data.status || "Em andamento",
                 companyId: req.auth!.companyId,
-                client: client || null,
-                address: address || null,
-                cep: cep || null,
-                number: num || null,
-                complement: complement || null,
-                description: description || null,
-                imageUrl: imageUrl || null
+                client: data.client || null,
+                address: data.address || null,
+                cep: data.cep || null,
+                number: data.number || null,
+                complement: data.complement || null,
+                description: data.description || null,
+                imageUrl: data.imageUrl || null
             }
         });
 
         res.status(201).json(obra);
     } catch (error) {
-        console.error("Create obra error:", error);
+        if (process.env.NODE_ENV === 'development') {
+            console.error("Create obra error:", error);
+        }
         res.status(500).json({ error: "Erro ao criar obra." });
     }
 });
 
 app.put("/api/obras/:id", authMiddleware, async (req, res) => {
     try {
-        const {
-            name, materialsCost, laborCost, totalCost, progress,
-            startDate, endDate, status, client, address,
-            cep, number: num, complement, description, imageUrl
-        } = req.body;
+        // Validar input com Zod
+        const validation = updateObraSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
+        }
 
         const existing = await prisma.obra.findFirst({
             where: { id: req.params.id, companyId: req.auth!.companyId }
@@ -238,25 +306,28 @@ app.put("/api/obras/:id", authMiddleware, async (req, res) => {
             return res.status(404).json({ error: "Obra não encontrada." });
         }
 
+        const data = validation.data;
+        const updateData: any = {};
+        
+        if (data.name !== undefined) updateData.name = data.name.trim();
+        if (data.materialsCost !== undefined) updateData.materialsCost = data.materialsCost;
+        if (data.laborCost !== undefined) updateData.laborCost = data.laborCost;
+        if (data.totalCost !== undefined) updateData.totalCost = data.totalCost;
+        if (data.progress !== undefined) updateData.progress = data.progress;
+        if (data.startDate !== undefined) updateData.startDate = data.startDate;
+        if (data.endDate !== undefined) updateData.endDate = data.endDate;
+        if (data.status !== undefined) updateData.status = data.status;
+        if (data.client !== undefined) updateData.client = data.client;
+        if (data.address !== undefined) updateData.address = data.address;
+        if (data.cep !== undefined) updateData.cep = data.cep;
+        if (data.number !== undefined) updateData.number = data.number;
+        if (data.complement !== undefined) updateData.complement = data.complement;
+        if (data.description !== undefined) updateData.description = data.description;
+        if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+
         const obra = await prisma.obra.update({
             where: { id: req.params.id },
-            data: {
-                ...(name !== undefined && { name: name.trim() }),
-                ...(materialsCost !== undefined && { materialsCost: parseFloat(materialsCost) }),
-                ...(laborCost !== undefined && { laborCost: parseFloat(laborCost) }),
-                ...(totalCost !== undefined && { totalCost: parseFloat(totalCost) }),
-                ...(progress !== undefined && { progress: parseInt(progress) }),
-                ...(startDate !== undefined && { startDate }),
-                ...(endDate !== undefined && { endDate }),
-                ...(status !== undefined && { status }),
-                ...(client !== undefined && { client }),
-                ...(address !== undefined && { address }),
-                ...(cep !== undefined && { cep }),
-                ...(num !== undefined && { number: num }),
-                ...(complement !== undefined && { complement }),
-                ...(description !== undefined && { description }),
-                ...(imageUrl !== undefined && { imageUrl }),
-            }
+            data: updateData
         });
 
         res.json(obra);
@@ -294,58 +365,79 @@ app.get("/api/users", authMiddleware, async (req, res) => {
     }
 });
 
-app.post("/api/users", authMiddleware, async (req, res) => {
+app.post("/api/users", authMiddleware, requireAdmin, async (req, res) => {
     try {
-        const { name, email, password, role, obraId } = req.body;
-
-        if (!name || !email || !password) {
-            return res.status(400).json({ error: "Nome, email e senha devem ser preenchidos." });
+        // Validar input com Zod
+        const validation = createUserSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
         }
 
-        const existing = await prisma.user.findUnique({ where: { email } });
+        const data = validation.data;
+        const existing = await prisma.user.findUnique({ where: { email: data.email } });
         if (existing) {
             return res.status(409).json({ error: "Email já cadastrado." });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(data.password, 10);
 
         const user = await prisma.user.create({
             data: {
                 companyId: req.auth!.companyId,
-                name,
-                email,
+                name: data.name,
+                email: data.email,
                 password: hashedPassword,
-                role: role || "user",
-                obraId: obraId || null
+                role: data.role || "user",
+                obraId: data.obraId || null
             }
         });
 
         const { password: _, ...userWithoutPassword } = user;
         res.status(201).json(userWithoutPassword);
     } catch (err) {
-        console.error(err);
+        if (process.env.NODE_ENV === 'development') {
+            console.error(err);
+        }
         res.status(500).json({ error: "Erro ao criar usuário." });
     }
 });
 
-app.put("/api/users/:id", authMiddleware, async (req, res) => {
+app.put("/api/users/:id", authMiddleware, requireAdmin, async (req, res) => {
     try {
-        const { name, email, role, obraId, password } = req.body;
+        // Validar input com Zod
+        const validation = updateUserSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
+        }
 
-        const data: any = { name, email, role, obraId };
-        if (password) {
-            data.password = await bcrypt.hash(password, 10);
+        const data = validation.data;
+        const updateData: any = {};
+        
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.email !== undefined) updateData.email = data.email;
+        if (data.role !== undefined) updateData.role = data.role;
+        if (data.obraId !== undefined) updateData.obraId = data.obraId;
+        if (data.password) {
+            updateData.password = await bcrypt.hash(data.password, 10);
         }
 
         const user = await prisma.user.update({
             where: { id: req.params.id },
-            data
+            data: updateData
         });
 
         const { password: _, ...userWithoutPassword } = user;
         res.json(userWithoutPassword);
     } catch (err) {
-        console.error(err);
+        if (process.env.NODE_ENV === 'development') {
+            console.error(err);
+        }
         res.status(500).json({ error: "Erro ao atualizar usuário." });
     }
 });
@@ -375,18 +467,22 @@ app.get("/api/clientes", authMiddleware, async (req, res) => {
 
 app.post("/api/clientes", authMiddleware, async (req, res) => {
     try {
-        const { nome, cpfCnpj, telefone, email } = req.body;
-
-        if (!nome || !cpfCnpj) {
-            return res.status(400).json({ error: "Nome e CPF/CNPJ são obrigatórios." });
+        // Validar input com Zod
+        const validation = createClienteSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
         }
 
+        const data = validation.data;
         const cliente = await prisma.cliente.create({
             data: {
-                nome: nome.trim(),
-                cpfCnpj: cpfCnpj.trim(),
-                telefone: telefone?.trim() || "",
-                email: email?.trim() || "",
+                nome: data.nome.trim(),
+                cpfCnpj: data.cpfCnpj.trim(),
+                telefone: data.telefone?.trim() || "",
+                email: data.email?.trim() || "",
                 companyId: req.auth!.companyId
             }
         });
@@ -399,7 +495,14 @@ app.post("/api/clientes", authMiddleware, async (req, res) => {
 
 app.put("/api/clientes/:id", authMiddleware, async (req, res) => {
     try {
-        const { nome, cpfCnpj, telefone, email } = req.body;
+        // Validar input com Zod
+        const validation = updateClienteSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
+        }
 
         const existing = await prisma.cliente.findFirst({
             where: { id: req.params.id, companyId: req.auth!.companyId }
@@ -408,14 +511,17 @@ app.put("/api/clientes/:id", authMiddleware, async (req, res) => {
             return res.status(404).json({ error: "Cliente não encontrado." });
         }
 
+        const data = validation.data;
+        const updateData: any = {};
+        
+        if (data.nome !== undefined) updateData.nome = data.nome.trim();
+        if (data.cpfCnpj !== undefined) updateData.cpfCnpj = data.cpfCnpj.trim();
+        if (data.telefone !== undefined) updateData.telefone = data.telefone.trim();
+        if (data.email !== undefined) updateData.email = data.email.trim();
+
         const cliente = await prisma.cliente.update({
             where: { id: req.params.id },
-            data: {
-                ...(nome !== undefined && { nome: nome.trim() }),
-                ...(cpfCnpj !== undefined && { cpfCnpj: cpfCnpj.trim() }),
-                ...(telefone !== undefined && { telefone: telefone.trim() }),
-                ...(email !== undefined && { email: email.trim() }),
-            }
+            data: updateData
         });
 
         res.json(cliente);
@@ -455,8 +561,21 @@ app.get("/api/fornecedores", authMiddleware, async (req, res) => {
 
 app.post("/api/fornecedores", authMiddleware, async (req, res) => {
     try {
+        // Validar input com Zod
+        const validation = createFornecedorSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
+        }
+
+        const data = validation.data;
         const fornecedor = await prisma.fornecedor.create({
-            data: { ...req.body, companyId: req.auth!.companyId }
+            data: { 
+                ...data,
+                companyId: req.auth!.companyId 
+            }
         });
         res.status(201).json(fornecedor);
     } catch (err: any) {
@@ -466,13 +585,23 @@ app.post("/api/fornecedores", authMiddleware, async (req, res) => {
 
 app.put("/api/fornecedores/:id", authMiddleware, async (req, res) => {
     try {
+        // Validar input com Zod
+        const validation = updateFornecedorSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Dados inválidos',
+                details: validation.error.errors 
+            });
+        }
+
         const existing = await prisma.fornecedor.findFirst({
             where: { id: req.params.id, companyId: req.auth!.companyId }
         });
         if (!existing) { return res.status(404).json({ error: "Fornecedor não encontrado." }); }
+        
         const updated = await prisma.fornecedor.update({
             where: { id: req.params.id },
-            data: req.body
+            data: validation.data
         });
         res.json(updated);
     } catch (err: any) {
@@ -688,28 +817,33 @@ app.post("/api/medicoes/:id/pagar", authMiddleware, async (req, res) => {
         });
         if (!medicao) { return res.status(404).json({ error: "Medição não encontrada." }); }
 
-        const obra = await prisma.obra.findFirst({ where: { id: medicao.obraId } });
+        // Usar transação para garantir atomicidade
+        const result = await prisma.$transaction(async (tx) => {
+            const obra = await tx.obra.findFirst({ where: { id: medicao.obraId } });
 
-        const lancamento = await prisma.lancamento.create({
-            data: {
-                obraId: medicao.obraId,
-                companyId: req.auth!.companyId,
-                obraNome: obra?.name || "",
-                tipo: "Despesa",
-                descricao: `Pagamento Medição: ${medicao.descricao}`,
-                valor: medicao.valorMedido,
-                dataVencimento: new Date().toISOString().split("T")[0],
-                dataPagamento: new Date().toISOString().split("T")[0],
-                status: "Pago"
-            }
+            const lancamento = await tx.lancamento.create({
+                data: {
+                    obraId: medicao.obraId,
+                    companyId: req.auth!.companyId,
+                    obraNome: obra?.name || "",
+                    tipo: "Despesa",
+                    descricao: `Pagamento Medição: ${medicao.descricao}`,
+                    valor: medicao.valorMedido,
+                    dataVencimento: new Date().toISOString().split("T")[0],
+                    dataPagamento: new Date().toISOString().split("T")[0],
+                    status: "Pago"
+                }
+            });
+
+            const updatedMedicao = await tx.medicao.update({
+                where: { id: req.params.id },
+                data: { status: "Pago", lancamentoGeradoId: lancamento.id }
+            });
+
+            return { medicao: updatedMedicao, lancamento };
         });
 
-        const updatedMedicao = await prisma.medicao.update({
-            where: { id: req.params.id },
-            data: { status: "Pago", lancamentoGeradoId: lancamento.id }
-        });
-
-        res.json({ medicao: updatedMedicao, lancamento });
+        res.json(result);
     } catch (err: any) {
         res.status(400).json({ error: err.message || "Erro ao pagar." });
     }
@@ -795,43 +929,48 @@ app.post("/api/cotacoes/:id/aprovar", authMiddleware, async (req, res) => {
         });
         if (!cotacao) { return res.status(404).json({ error: "Cotação não encontrada." }); }
 
-        const obra = await prisma.obra.findFirst({ where: { id: cotacao.obraId } });
+        // Usar transação para garantir atomicidade
+        const result = await prisma.$transaction(async (tx) => {
+            const obra = await tx.obra.findFirst({ where: { id: cotacao.obraId } });
 
-        // Create lancamento
-        const lancamento = await prisma.lancamento.create({
-            data: {
-                obraId: cotacao.obraId,
-                companyId: req.auth!.companyId,
-                obraNome: obra?.name || "",
-                tipo: "Despesa",
-                fornecedorId: cotacao.fornecedorId,
-                fornecedorNome: cotacao.fornecedorNome || "",
-                descricao: `Cotação aprovada: ${cotacao.descricao}`,
-                valor: cotacao.valor,
-                dataVencimento: new Date().toISOString().split("T")[0],
-                status: "Pendente"
-            }
+            // Create lancamento
+            const lancamento = await tx.lancamento.create({
+                data: {
+                    obraId: cotacao.obraId,
+                    companyId: req.auth!.companyId,
+                    obraNome: obra?.name || "",
+                    tipo: "Despesa",
+                    fornecedorId: cotacao.fornecedorId,
+                    fornecedorNome: cotacao.fornecedorNome || "",
+                    descricao: `Cotação aprovada: ${cotacao.descricao}`,
+                    valor: cotacao.valor,
+                    dataVencimento: new Date().toISOString().split("T")[0],
+                    status: "Pendente"
+                }
+            });
+
+            // Create lista de compras item
+            await tx.listaCompra.create({
+                data: {
+                    obraId: cotacao.obraId,
+                    companyId: req.auth!.companyId,
+                    descricao: cotacao.descricao,
+                    valorPrevisto: cotacao.valor,
+                    dataPrevista: new Date().toISOString().split("T")[0],
+                    status: "Planejado"
+                }
+            });
+
+            // Update cotacao status
+            const updated = await tx.cotacao.update({
+                where: { id: req.params.id },
+                data: { status: "Aprovado" }
+            });
+
+            return { cotacao: updated, lancamento };
         });
 
-        // Create lista de compras item
-        await prisma.listaCompra.create({
-            data: {
-                obraId: cotacao.obraId,
-                companyId: req.auth!.companyId,
-                descricao: cotacao.descricao,
-                valorPrevisto: cotacao.valor,
-                dataPrevista: new Date().toISOString().split("T")[0],
-                status: "Planejado"
-            }
-        });
-
-        // Update cotacao status
-        const updated = await prisma.cotacao.update({
-            where: { id: req.params.id },
-            data: { status: "Aprovado" }
-        });
-
-        res.json({ cotacao: updated, lancamento });
+        res.json(result);
     } catch (err: any) {
         res.status(400).json({ error: err.message || "Erro ao aprovar." });
     }
@@ -1343,11 +1482,15 @@ if (process.env.NODE_ENV === "production") {
 
 async function initializeDatabase() {
     try {
-        console.log("🔄 Initializing database...");
+        if (process.env.NODE_ENV === 'development') {
+            console.log("🔄 Initializing database...");
+        }
 
         // Test database connection
         await prisma.$connect();
-        console.log("✅ Database connected successfully");
+        if (process.env.NODE_ENV === 'development') {
+            console.log("✅ Database connected successfully");
+        }
 
         // Create default company if it doesn't exist
         let company = await prisma.company.findFirst();
@@ -1358,35 +1501,49 @@ async function initializeDatabase() {
                     cnpj: "00.000.000/0001-00"
                 }
             });
-            console.log("✅ Default company created:", company.name);
+            if (process.env.NODE_ENV === 'development') {
+                console.log("✅ Default company created:", company.name);
+            }
         } else {
-            console.log("✅ Company exists:", company.name);
+            if (process.env.NODE_ENV === 'development') {
+                console.log("✅ Company exists:", company.name);
+            }
         }
 
         // Create default admin user if it doesn't exist
-        const adminEmail = "admin@erp.com";
+        const adminEmail = process.env.ADMIN_EMAIL || "admin@erp.com";
+        const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+        
         let user = await prisma.user.findUnique({
             where: { email: adminEmail }
         });
 
         if (!user) {
-            const hashedPassword = await bcrypt.hash("admin123", 10);
+            const hashedPassword = await bcrypt.hash(adminPassword, 10);
             user = await prisma.user.create({
                 data: {
                     name: "Administrador",
                     email: adminEmail,
                     password: hashedPassword,
-                    companyId: company.id
+                    companyId: company.id,
+                    role: "admin"
                 }
             });
-            console.log("✅ Default admin user created:");
-            console.log("   📧 Email: admin@erp.com");
-            console.log("   🔑 Password: admin123");
+            if (process.env.NODE_ENV === 'development') {
+                console.log("✅ Default admin user created:");
+                console.log(`   📧 Email: ${adminEmail}`);
+                console.log(`   🔑 Password: ${adminPassword}`);
+                console.log("   ⚠️ IMPORTANTE: Altere a senha padrão em produção!");
+            }
         } else {
-            console.log("✅ Admin user already exists");
+            if (process.env.NODE_ENV === 'development') {
+                console.log("✅ Admin user already exists");
+            }
         }
 
-        console.log("✅ Database initialization completed");
+        if (process.env.NODE_ENV === 'development') {
+            console.log("✅ Database initialization completed");
+        }
         return true;
     } catch (error) {
         console.error("❌ Database initialization failed:", error);
@@ -1396,9 +1553,7 @@ async function initializeDatabase() {
 
 // ============ ERROR HANDLING ============
 
-app.use((_err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    res.status(500).json({ error: "Erro interno do servidor." });
-});
+app.use(errorHandler);
 
 // ============ SERVER STARTUP ============
 
@@ -1407,32 +1562,43 @@ async function startServer() {
         // Initialize database first
         const dbInitialized = await initializeDatabase();
         if (!dbInitialized) {
-            console.error("❌ Failed to initialize database. Exiting...");
-            process.exit(1);
+            console.error("⚠️ Failed to initialize database. Server will start but database features will be unavailable.");
+            // process.exit(1); // Removed to allow server to start
         }
 
         // Start server
         const server = app.listen(PORT, () => {
-            console.log(`🚀 ERP Server running on http://localhost:${PORT}`);
-            console.log(`📊 Health check: http://localhost:${PORT}/health`);
-            console.log(`🔐 Login with: admin@erp.com / admin123`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🚀 ERP Server running on http://localhost:${PORT}`);
+                console.log(`📊 Health check: http://localhost:${PORT}/health`);
+                const adminEmail = process.env.ADMIN_EMAIL || "admin@erp.com";
+                console.log(`🔐 Login with: ${adminEmail} / [senha padrão]`);
+            }
         });
 
         // Graceful shutdown
         process.on('SIGTERM', async () => {
-            console.log('🔄 SIGTERM received, shutting down gracefully...');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🔄 SIGTERM received, shutting down gracefully...');
+            }
             server.close(() => {
                 prisma.$disconnect();
-                console.log('✅ Server closed');
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('✅ Server closed');
+                }
                 process.exit(0);
             });
         });
 
         process.on('SIGINT', async () => {
-            console.log('🔄 SIGINT received, shutting down gracefully...');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🔄 SIGINT received, shutting down gracefully...');
+            }
             server.close(() => {
                 prisma.$disconnect();
-                console.log('✅ Server closed');
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('✅ Server closed');
+                }
                 process.exit(0);
             });
         });

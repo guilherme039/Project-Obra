@@ -4,17 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npx tsx watch server.ts\" \"vite\"",
-    "build": "vite build",
+    "dev": "npx concurrently \"npx tsx watch server.ts\" \"npx vite\"",
+    "build": "npx vite build",
     "start": "npx tsx server.ts",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "npx vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:setup": "npx prisma generate && npx prisma migrate deploy",
-    "db:reset": "npx prisma migrate reset --force",
-    "prisma:generate": "npx prisma generate",
-    "prisma:migrate": "npx prisma migrate dev"
+    "db:setup": "npx prisma@5.22.0 generate && npx prisma@5.22.0 migrate deploy",
+    "db:reset": "npx prisma@5.22.0 migrate reset --force",
+    "prisma:generate": "npx prisma@5.22.0 generate",
+    "prisma:migrate": "npx prisma@5.22.0 migrate dev"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -54,6 +54,8 @@
     "cors": "^2.8.5",
     "date-fns": "^3.6.0",
     "dotenv": "^16.4.7",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
     "embla-carousel-react": "^8.6.0",
     "express": "^4.21.1",
     "input-otp": "^1.4.2",
