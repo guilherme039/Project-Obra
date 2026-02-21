@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  cnpj      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             User[]
+  obras             Obra[]
+  lancamentos       Lancamento[]
+  clientes          Cliente[]
+  fornecedores      Fornecedor[]
+  relatorios        RelatorioSemanal[]
+  medicoes          Medicao[]
+  comentarios       ComentarioObra[]
+  etapas            Etapa[]
+  listaCompras      ListaCompra[]
+  cotacoes          Cotacao[]
+  notasFiscais      NotaFiscal[]
+  activityLogs      ActivityLog[]
+
+  @@index([id])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  obraId    String?
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  emailConfirmed Boolean @default(false)
+  verificationToken String?
+  verificationTokenExpiresAt DateTime?
+
+  @@index([companyId])
+  @@index([email])
+  @@index([obraId])
+}
+
+model Obra {
+  id            String   @id @default(uuid())
+  companyId     String
+  name          String
+  client        String?
+  clientId      String?
+  address       String?
+  cep           String?
+  number        String?
+  complement    String?
+  startDate     String?
+  endDate       String?
+  totalCost     Float    @default(0)
+  materialsCost Float?
+  laborCost     Float?
+  progress      Int      @default(0)
+  status        String   @default("Em andamento")
+  description   String?
+  imageUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  etapas        Etapa[]
+  medicoes      Medicao[]
+  lancamentos   Lancamento[]
+  cotacoes      Cotacao[]
+  listaCompras  ListaCompra[]
+  notasFiscais  NotaFiscal[]
+  relatorios    RelatorioSemanal[]
+  comentarios   ComentarioObra[]
+
+  @@index([companyId])
+}
+
+model Etapa {
+  id                  String   @id @default(uuid())
+  obraId              String
+  companyId           String
+  nome                String
+  descricao           String   @default("")
+  dataInicio          String
+  dataFim             String
+  percentualPrevisto  Float    @default(0)
+  percentualExecutado Float    @default(0)
+  ordem               Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  obra      Obra     @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  medicoes  Medicao[]
+
+  @@index([companyId])
+  @@index([obraId])
+}
+
+model Medicao {
+  id                   String   @id @default(uuid())
+  obraId               String
+  companyId            String
+  etapaId              String?
+  descricao            String
+  percentualExecutado  Float    @default(0)
+  valorMedido          Float    @default(0)
+  dataMedicao          String
+  status               String   @default("Pendente")
+  lancamentoGeradoId   String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  obra    Obra     @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  etapa   Etapa?   @relation(fields: [etapaId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([obraId])
+}
+
+model Lancamento {
+  id              String   @id @default(uuid())
+  companyId       String
+  obraId          String
+  obraNome        String?
+  tipo            String
+  fornecedorId    String?
+  fornecedorNome  String?
+  descricao       String
+  valor           Float    @default(0)
+  dataVencimento  String
+  dataPagamento   String?
+  status          String   @default("Pendente")
+  categoria       String?
+  parcela         Int?
+  totalParcelas   Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  obra    Obra    @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([obraId])
+}
+
+model Cliente {
+  id        String   @id @default(uuid())
+  companyId String
+  nome      String
+  cpfCnpj   String
+  telefone  String
+  email     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model Fornecedor {
+  id        String   @id @default(uuid())
+  companyId String
+  nome      String
+  cnpj      String
+  telefone  String
+  email     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cotacoes Cotacao[]
+
+  @@index([companyId])
+}
+
+model Cotacao {
+  id              String   @id @default(uuid())
+  obraId          String
+  companyId       String
+  fornecedorId    String
+  fornecedorNome  String?
+  descricao       String
+  valor           Float    @default(0)
+  status          String   @default("Solicitado")
+  criadoEm        String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  obra       Obra       @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fornecedor Fornecedor @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([obraId])
+}
+
+model ListaCompra {
+  id            String   @id @default(uuid())
+  obraId        String
+  companyId     String
+  etapaId       String?
+  descricao     String
+  valorPrevisto Float    @default(0)
+  dataPrevista  String
+  status        String   @default("Planejado")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  obra    Obra    @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([obraId])
+}
+
+model NotaFiscal {
+  id              String   @id @default(uuid())
+  obraId          String
+  companyId       String
+  numero          String
+  fornecedorId    String
+  fornecedorNome  String?
+  valor           Float    @default(0)
+  dataEmissao     String
+  arquivoURL      String?
+  lancamentoId    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  obra    Obra    @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([obraId])
+}
+
+model RelatorioSemanal {
+  id                    String   @id @default(uuid())
+  obraId                String
+  companyId             String
+  semanaInicio          String
+  semanaFim             String
+  descricaoAtividades   String
+  fotos                 String   @default("[]")
+  observacoesTecnicas   String
+  criadoPor             String
+  criadoPorNome         String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  obra    Obra    @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([obraId])
+}
+
+model ComentarioObra {
+  id           String   @id @default(uuid())
+  obraId       String
+  companyId    String
+  usuarioId    String
+  usuarioNome  String
+  comentario   String
+  dataCriacao  String
+  oculto       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  obra    Obra    @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([obraId])
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  userId     String
+  userName   String
+  companyId  String
+  action     String
+  entity     String
+  entityId   String
+  entityName String
+  timestamp  DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
