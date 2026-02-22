@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { useAuth } from "@/contexts/AuthContext";
 import { obrasService, lancamentosService, autoUpdateOverdueStatus } from "@/services/api";
-import { exportToJSON, exportToCSV } from "@/services/exportData";
+import { exportToJSON, exportToCSV, exportToPDF } from "@/services/exportData";
 import Layout from "@/components/Layout";
 import { FileBarChart, Download } from "lucide-react";
 import { toast } from "sonner";
@@ -11,14 +11,25 @@ export default function Relatorios() {
   const { user } = useAuth();
   const companyId = user?.companyId || "";
   const [selectedObra, setSelectedObra] = useState<string>("geral");
+  const [reportType, setReportType] = useState<"geral" | "receitas" | "despesas" | "atrasados">("geral");
 
   const { data: obras = [] } = useAsyncData(() => obrasService.getAll(companyId), [companyId]);
   const { data: allLancamentos = [] } = useAsyncData(() => lancamentosService.getAll(companyId), [companyId]);
 
   const lancamentos = useMemo(() => {
-    if (selectedObra === "geral") return allLancamentos;
-    return allLancamentos.filter((l) => l.obraId === selectedObra);
-  }, [allLancamentos, selectedObra]);
+    let list = allLancamentos;
+    if (selectedObra !== "geral") {
+      list = list.filter((l) => l.obraId === selectedObra);
+    }
+    if (reportType === "receitas") {
+      list = list.filter((l) => l.tipo === "Receita");
+    } else if (reportType === "despesas") {
+      list = list.filter((l) => l.tipo === "Despesa");
+    } else if (reportType === "atrasados") {
+      list = list.filter((l) => l.status === "Atrasado");
+    }
+    return list;
+  }, [allLancamentos, selectedObra, reportType]);
 
   const receitas = lancamentos.filter((l) => l.tipo === "Receita").reduce((a, l) => a + l.valor, 0);
   const despesas = lancamentos.filter((l) => l.tipo === "Despesa").reduce((a, l) => a + l.valor, 0);
@@ -26,7 +37,7 @@ export default function Relatorios() {
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  const handleExport = (format: "json" | "csv") => {
+  const handleExport = (format: "json" | "csv" | "pdf") => {
     try {
       if (lancamentos.length === 0) {
         toast.error("Nenhum dado para exportar.");
@@ -37,17 +48,20 @@ export default function Relatorios() {
         Tipo: l.tipo,
         Obra: l.obraNome || "-",
         Fornecedor: l.fornecedorNome || "-",
-        Valor: l.valor,
+        Valor: formatCurrency(l.valor),
         Vencimento: l.dataVencimento,
-        Pagamento: l.dataPagamento || "-",
         Status: l.status,
-        Categoria: l.categoria || "-",
       }));
-      const filename = `relatorio_${selectedObra === "geral" ? "geral" : "obra"}_${new Date().toISOString().split("T")[0]}`;
+      const filename = `relatorio_${reportType}_${selectedObra === "geral" ? "geral" : "obra"}_${new Date().toISOString().split("T")[0]}`;
+
       if (format === "json") {
         exportToJSON(data, filename);
+      } else if (format === "csv") {
+        exportToCSV(data as any, filename);
       } else {
-        exportToCSV(data, filename);
+        const obraNome = selectedObra === "geral" ? "Todas as Obras" : obras.find(o => o.id === selectedObra)?.name || "Obra";
+        const title = `Relatório de ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} - ${obraNome}`;
+        exportToPDF(data, title, filename);
       }
       toast.success(`Relatório exportado em ${format.toUpperCase()} com sucesso.`);
     } catch (e) {
@@ -63,15 +77,21 @@ export default function Relatorios() {
           <p className="text-sm text-muted-foreground">Relatorios financeiros da construtora</p>
         </div>
         <div className="flex items-center gap-2">
+          <select value={reportType} onChange={(e) => setReportType(e.target.value as any)} className="px-3 py-2 bg-secondary border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50">
+            <option value="geral">Todos os Lançamentos</option>
+            <option value="receitas">Apenas Receitas</option>
+            <option value="despesas">Apenas Despesas</option>
+            <option value="atrasados">Apenas Atrasados</option>
+          </select>
           <select value={selectedObra} onChange={(e) => setSelectedObra(e.target.value)} className="px-3 py-2 bg-secondary border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50">
-            <option value="geral">Relatorio Geral</option>
+            <option value="geral">Todas as Obras</option>
             {obras.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
+          <button onClick={() => handleExport("pdf")} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+            <Download className="h-3.5 w-3.5" /> PDF
+          </button>
           <button onClick={() => handleExport("csv")} className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-md text-sm text-foreground hover:bg-muted transition-colors">
             <Download className="h-3.5 w-3.5" /> CSV
-          </button>
-          <button onClick={() => handleExport("json")} className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-md text-sm text-foreground hover:bg-muted transition-colors">
-            <Download className="h-3.5 w-3.5" /> JSON
           </button>
         </div>
       </div>

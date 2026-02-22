@@ -78,9 +78,9 @@ export default function ObraDetalhe() {
                     <ArrowLeft className="h-4 w-4 text-muted-foreground" />
                 </button>
                 <div className="flex-1">
-                    <h1 className="text-xl font-bold text-foreground">{obra.nome}</h1>
+                    <h1 className="text-xl font-bold text-foreground">{obra.name}</h1>
                     <p className="text-sm text-muted-foreground flex items-center gap-1">
-                        <MapPin className="h-3 w-3" /> {obra.endereco}
+                        <MapPin className="h-3.5 w-3.5" /> {obra.address}
                     </p>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${obra.status === "Em andamento" ? "bg-primary/20 text-primary" :
@@ -113,7 +113,7 @@ export default function ObraDetalhe() {
             {/* Tab Content */}
             {activeTab === "geral" && <TabVisaoGeral obra={obra} companyId={companyId} formatCurrency={formatCurrency} />}
             {activeTab === "etapas" && <TabEtapas obraId={obra.id} companyId={companyId} refreshKey={refreshKey} onRefresh={refresh} />}
-            {activeTab === "relatorios" && <TabRelatorios obraId={obra.id} obraNome={obra.nome} companyId={companyId} userId={user!.id} userName={user!.name} refreshKey={refreshKey} onRefresh={refresh} />}
+            {activeTab === "relatorios" && <TabRelatorios obraId={obra.id} obraNome={obra.name} companyId={companyId} userId={user!.id} userName={user!.name} refreshKey={refreshKey} onRefresh={refresh} />}
             {activeTab === "medicoes" && <TabMedicoes obraId={obra.id} companyId={companyId} refreshKey={refreshKey} onRefresh={refresh} />}
             {activeTab === "financeiro" && <TabFinanceiro obraId={obra.id} companyId={companyId} refreshKey={refreshKey} formatCurrency={formatCurrency} />}
             {activeTab === "compras" && <TabCompras obraId={obra.id} companyId={companyId} refreshKey={refreshKey} onRefresh={refresh} />}
@@ -133,7 +133,7 @@ function TabVisaoGeral({ obra, companyId, formatCurrency }: { obra: any; company
     const { data: relatorio } = useAsyncData(() => relatorioGerencialService.gerarRelatorio(obra.id, companyId), [obra.id, companyId]);
 
     const stats = [
-        { label: "Orçamento Total", value: formatCurrency(obra.orcamentoTotal), color: "text-primary" },
+        { label: "Orçamento Total", value: formatCurrency(obra.totalCost), color: "text-primary" },
         { label: "Total Pago", value: formatCurrency(resumo.totalPago), color: "text-success" },
         { label: "A Pagar", value: formatCurrency(resumo.totalAPagar), color: "text-warning" },
         { label: "Saldo Restante", value: formatCurrency(resumo.saldoRestante), color: resumo.saldoRestante >= 0 ? "text-success" : "text-destructive" },
@@ -157,12 +157,12 @@ function TabVisaoGeral({ obra, companyId, formatCurrency }: { obra: any; company
                 <div className="glass-card p-4 space-y-3">
                     <h3 className="text-sm font-semibold text-foreground">Informações da Obra</h3>
                     <div className="space-y-2 text-sm">
-                        <p><span className="text-muted-foreground">Cliente:</span> <span className="text-foreground ml-1">{obra.cliente}</span></p>
-                        <p><span className="text-muted-foreground">Endereço:</span> <span className="text-foreground ml-1">{obra.endereco}{obra.numero ? `, ${obra.numero}` : ""}{obra.complemento ? ` - ${obra.complemento}` : ""}</span></p>
+                        <p><span className="text-muted-foreground">Cliente:</span> <span className="text-foreground ml-1">{obra.client}</span></p>
+                        <p><span className="text-muted-foreground">Endereço:</span> <span className="text-foreground ml-1">{obra.address}{obra.number ? `, ${obra.number}` : ""}{obra.complement ? ` - ${obra.complement}` : ""}</span></p>
                         {obra.cep && <p><span className="text-muted-foreground">CEP:</span> <span className="text-foreground ml-1">{obra.cep}</span></p>}
-                        <p><span className="text-muted-foreground">Início:</span> <span className="text-foreground ml-1">{obra.dataInicio}</span></p>
-                        <p><span className="text-muted-foreground">Previsão Término:</span> <span className="text-foreground ml-1">{obra.dataPrevisaoTermino}</span></p>
-                        {obra.descricao && <p><span className="text-muted-foreground">Descrição:</span> <span className="text-foreground ml-1">{obra.descricao}</span></p>}
+                        <p><span className="text-muted-foreground">Início:</span> <span className="text-foreground ml-1">{obra.startDate}</span></p>
+                        <p><span className="text-muted-foreground">Previsão Término:</span> <span className="text-foreground ml-1">{obra.endDate}</span></p>
+                        {obra.description && <p><span className="text-muted-foreground">Descrição:</span> <span className="text-foreground ml-1">{obra.description}</span></p>}
                     </div>
                 </div>
 
@@ -170,10 +170,10 @@ function TabVisaoGeral({ obra, companyId, formatCurrency }: { obra: any; company
                     <h3 className="text-sm font-semibold text-foreground">Progresso</h3>
                     <div className="flex items-center justify-between text-sm mb-1">
                         <span className="text-muted-foreground">Físico (automático)</span>
-                        <span className="text-foreground font-bold">{obra.progresso}%</span>
+                        <span className="text-foreground font-bold">{obra.progress}%</span>
                     </div>
                     <div className="w-full bg-secondary rounded-full h-3">
-                        <div className="bg-primary h-3 rounded-full transition-all" style={{ width: `${obra.progresso}%` }} />
+                        <div className="bg-primary h-3 rounded-full transition-all" style={{ width: `${obra.progress}%` }} />
                     </div>
                     <div className="flex items-center justify-between text-sm mt-3 mb-1">
                         <span className="text-muted-foreground">Financeiro</span>
@@ -185,11 +185,11 @@ function TabVisaoGeral({ obra, companyId, formatCurrency }: { obra: any; company
                     <div className="grid grid-cols-2 gap-3 mt-4">
                         <div>
                             <p className="text-xs text-muted-foreground">Materiais</p>
-                            <p className="text-sm font-bold text-foreground">{formatCurrency(obra.orcamentoMateriais || 0)}</p>
+                            <p className="text-sm font-bold text-foreground">{formatCurrency(obra.materialsCost || 0)}</p>
                         </div>
                         <div>
                             <p className="text-xs text-muted-foreground">Empreiteira</p>
-                            <p className="text-sm font-bold text-foreground">{formatCurrency(obra.orcamentoEmpreiteira || 0)}</p>
+                            <p className="text-sm font-bold text-foreground">{formatCurrency(obra.laborCost || 0)}</p>
                         </div>
                     </div>
                 </div>

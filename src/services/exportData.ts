@@ -1,3 +1,6 @@
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -42,4 +45,29 @@ export function exportRelatorioSemanalCSV(
     "Data Criação": r.createdAt.split("T")[0],
   }));
   exportToCSV(data, `relatorios_semanais_${obraNome.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}`);
+}
+
+export function exportToPDF(data: Record<string, any>[], title: string, filename: string): void {
+  if (data.length === 0) throw new Error("Nenhum dado para exportar.");
+
+  const doc = new jsPDF();
+  const headers = Object.keys(data[0]);
+  const body = data.map((row) => headers.map((h) => String(row[h] ?? "-")));
+
+  doc.setFontSize(18);
+  doc.text(title, 14, 22);
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text(`Gerado em: ${new Date().toLocaleString("pt-BR")}`, 14, 28);
+
+  autoTable(doc, {
+    head: [headers],
+    body: body,
+    startY: 35,
+    theme: "striped",
+    headStyles: { fillColor: [0, 13, 51], textColor: 255 },
+    styles: { fontSize: 8, cellPadding: 2 },
+  });
+
+  doc.save(`${filename}.pdf`);
 }
