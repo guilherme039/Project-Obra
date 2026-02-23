@@ -6,15 +6,16 @@
   "scripts": {
     "dev": "npx concurrently \"npx tsx watch server.ts\" \"npx vite\"",
     "build": "npx vite build",
+    "postinstall": "prisma generate",
     "start": "npx tsx server.ts",
     "lint": "eslint .",
     "preview": "npx vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:setup": "npx prisma@5.22.0 generate && npx prisma@5.22.0 migrate deploy",
-    "db:reset": "npx prisma@5.22.0 migrate reset --force",
-    "prisma:generate": "npx prisma@5.22.0 generate",
-    "prisma:migrate": "npx prisma@5.22.0 migrate dev"
+    "db:setup": "prisma generate && prisma migrate deploy",
+    "db:reset": "prisma migrate reset --force",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

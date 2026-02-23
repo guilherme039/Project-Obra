@@ -20,27 +20,37 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error("JWT_SECRET deve ser configurado em produção");
-  }
-  console.warn("⚠️ Usando JWT_SECRET padrão (apenas desenvolvimento)");
-  return "erp-secret-key-change-in-production";
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error("JWT_SECRET deve ser configurado em produção");
+    }
+    console.warn("⚠️ Usando JWT_SECRET padrão (apenas desenvolvimento)");
+    return "erp-secret-key-change-in-production";
 })();
 
-// Initialize Prisma
+// Initialize Prisma with connection pool configuration
 const prisma = new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    datasources: {
+        db: {
+            url: process.env.DATABASE_URL,
+        },
+    },
 });
 
 // Check database connection
 prisma.$connect()
-  .then(() => {
-    console.log("✅ Conectado ao banco de dados.");
-  })
-  .catch((err) => {
-    console.error("❌ Erro ao conectar ao banco de dados:", err.message);
-    console.warn("⚠️ O servidor continuará rodando, mas chamadas à API que dependem do banco falharão.");
-  });
+    .then(() => {
+        console.log("✅ Conectado ao banco de dados PostgreSQL.");
+        if (process.env.NODE_ENV === 'development') {
+            const dbUrl = process.env.DATABASE_URL || '';
+            const host = dbUrl.match(/@([^:\/]+)/)?.[1] || 'unknown';
+            console.log(`📊 Host: ${host}`);
+        }
+    })
+    .catch((err) => {
+        console.error("❌ Erro ao conectar ao banco de dados:", err.message);
+        console.warn("⚠️ O servidor continuará rodando, mas chamadas à API que dependem do banco falharão.");
+    });
 
 // Security middlewares
 app.use(helmetMiddleware);
@@ -88,9 +98,9 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
         // Validar input com Zod
         const validation = loginSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
@@ -138,9 +148,9 @@ app.post("/auth/register", registerLimiter, async (req, res) => {
         // Validar input com Zod
         const validation = registerSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
@@ -198,7 +208,7 @@ app.post("/auth/register", registerLimiter, async (req, res) => {
 app.get("/api/obras", authMiddleware, async (req, res) => {
     try {
         const { page, limit, skip } = getPaginationParams(req);
-        
+
         const [obras, total] = await Promise.all([
             prisma.obra.findMany({
                 where: { companyId: req.auth!.companyId },
@@ -210,7 +220,7 @@ app.get("/api/obras", authMiddleware, async (req, res) => {
                 where: { companyId: req.auth!.companyId }
             })
         ]);
-        
+
         res.json({
             data: obras,
             pagination: {
@@ -249,9 +259,9 @@ app.post("/api/obras", authMiddleware, async (req, res) => {
         // Validar input com Zod
         const validation = createObraSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
@@ -293,9 +303,9 @@ app.put("/api/obras/:id", authMiddleware, async (req, res) => {
         // Validar input com Zod
         const validation = updateObraSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
@@ -308,7 +318,7 @@ app.put("/api/obras/:id", authMiddleware, async (req, res) => {
 
         const data = validation.data;
         const updateData: any = {};
-        
+
         if (data.name !== undefined) updateData.name = data.name.trim();
         if (data.materialsCost !== undefined) updateData.materialsCost = data.materialsCost;
         if (data.laborCost !== undefined) updateData.laborCost = data.laborCost;
@@ -370,9 +380,9 @@ app.post("/api/users", authMiddleware, requireAdmin, async (req, res) => {
         // Validar input com Zod
         const validation = createUserSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
@@ -410,15 +420,15 @@ app.put("/api/users/:id", authMiddleware, requireAdmin, async (req, res) => {
         // Validar input com Zod
         const validation = updateUserSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
         const data = validation.data;
         const updateData: any = {};
-        
+
         if (data.name !== undefined) updateData.name = data.name;
         if (data.email !== undefined) updateData.email = data.email;
         if (data.role !== undefined) updateData.role = data.role;
@@ -470,9 +480,9 @@ app.post("/api/clientes", authMiddleware, async (req, res) => {
         // Validar input com Zod
         const validation = createClienteSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
@@ -498,9 +508,9 @@ app.put("/api/clientes/:id", authMiddleware, async (req, res) => {
         // Validar input com Zod
         const validation = updateClienteSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
@@ -513,7 +523,7 @@ app.put("/api/clientes/:id", authMiddleware, async (req, res) => {
 
         const data = validation.data;
         const updateData: any = {};
-        
+
         if (data.nome !== undefined) updateData.nome = data.nome.trim();
         if (data.cpfCnpj !== undefined) updateData.cpfCnpj = data.cpfCnpj.trim();
         if (data.telefone !== undefined) updateData.telefone = data.telefone.trim();
@@ -564,17 +574,17 @@ app.post("/api/fornecedores", authMiddleware, async (req, res) => {
         // Validar input com Zod
         const validation = createFornecedorSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
         const data = validation.data;
         const fornecedor = await prisma.fornecedor.create({
-            data: { 
+            data: {
                 ...data,
-                companyId: req.auth!.companyId 
+                companyId: req.auth!.companyId
             }
         });
         res.status(201).json(fornecedor);
@@ -588,9 +598,9 @@ app.put("/api/fornecedores/:id", authMiddleware, async (req, res) => {
         // Validar input com Zod
         const validation = updateFornecedorSchema.safeParse(req.body);
         if (!validation.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Dados inválidos',
-                details: validation.error.errors 
+                details: validation.error.errors
             });
         }
 
@@ -598,7 +608,7 @@ app.put("/api/fornecedores/:id", authMiddleware, async (req, res) => {
             where: { id: req.params.id, companyId: req.auth!.companyId }
         });
         if (!existing) { return res.status(404).json({ error: "Fornecedor não encontrado." }); }
-        
+
         const updated = await prisma.fornecedor.update({
             where: { id: req.params.id },
             data: validation.data
@@ -1513,7 +1523,7 @@ async function initializeDatabase() {
         // Create default admin user if it doesn't exist
         const adminEmail = process.env.ADMIN_EMAIL || "admin@erp.com";
         const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-        
+
         let user = await prisma.user.findUnique({
             where: { email: adminEmail }
         });
