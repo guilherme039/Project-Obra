@@ -20,11 +20,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
         throw new Error("JWT_SECRET deve ser configurado em produção");
     }
-    console.warn("⚠️ Usando JWT_SECRET padrão (apenas desenvolvimento)");
-    return "erp-secret-key-change-in-production";
+    console.warn("⚠️ Usando JWT_SECRET padrão ou de ambiente");
+    return process.env.JWT_SECRET || "erp-secret-key-change-in-production";
 })();
 
 // Initialize Prisma with connection pool configuration
@@ -1577,14 +1577,18 @@ async function startServer() {
         }
 
         // Start server
-        const server = app.listen(PORT, () => {
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`🚀 ERP Server running on http://localhost:${PORT}`);
-                console.log(`📊 Health check: http://localhost:${PORT}/health`);
-                const adminEmail = process.env.ADMIN_EMAIL || "admin@erp.com";
-                console.log(`🔐 Login with: ${adminEmail} / [senha padrão]`);
-            }
-        });
+        // Start server only if not on Vercel
+        let server: any;
+        if (!process.env.VERCEL) {
+            server = app.listen(PORT, () => {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🚀 ERP Server running on http://localhost:${PORT}`);
+                    console.log(`📊 Health check: http://localhost:${PORT}/health`);
+                    const adminEmail = process.env.ADMIN_EMAIL || "admin@erp.com";
+                    console.log(`🔐 Login with: ${adminEmail} / [senha padrão]`);
+                }
+            });
+        }
 
         // Graceful shutdown
         process.on('SIGTERM', async () => {
