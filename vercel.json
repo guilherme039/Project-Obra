@@ -1,38 +1,27 @@
 {
-    "version": 2,
-    "builds": [
-        {
-            "src": "server.ts",
-            "use": "@vercel/node"
-        },
-        {
-            "src": "package.json",
-            "use": "@vercel/static-build",
-            "config": {
-                "distDir": "dist"
-            }
+    "buildCommand": "npx vite build",
+    "outputDirectory": "dist",
+    "functions": {
+        "api/index.ts": {
+            "runtime": "@vercel/node@3"
         }
-    ],
-    "routes": [
+    },
+    "rewrites": [
         {
-            "src": "/(auth|api|health)(.*)",
-            "dest": "/server.ts"
+            "source": "/api/(.*)",
+            "destination": "/api/index.ts"
         },
         {
-            "src": "/assets/(.*)",
-            "dest": "/dist/assets/$1"
+            "source": "/auth/(.*)",
+            "destination": "/api/index.ts"
         },
         {
-            "src": "/favicon\\.ico",
-            "dest": "/dist/favicon.ico"
+            "source": "/health",
+            "destination": "/api/index.ts"
         },
         {
-            "src": "/(.*\\.(js|css|png|jpg|jpeg|svg|gif|ico|woff|woff2|ttf|eot))",
-            "dest": "/dist/$1"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/dist/index.html"
+            "source": "/(.*)",
+            "destination": "/index.html"
         }
     ]
 }
