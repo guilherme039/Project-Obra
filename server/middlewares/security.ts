@@ -11,13 +11,14 @@ export const corsMiddleware = cors({
       'http://localhost:3000',
       'http://localhost:5173'
     ];
-    
-    // Permitir requisições sem origin (mobile apps, Postman, etc) apenas em desenvolvimento
-    if (!origin && process.env.NODE_ENV === 'development') {
+
+    // Permitir requisições sem origin (serverless same-origin, mobile apps, Postman)
+    if (!origin) {
       return callback(null, true);
     }
-    
-    if (!origin || allowedOrigins.includes(origin)) {
+
+    // Permitir origins explícitos e qualquer subdomínio .vercel.app
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       callback(null, true);
     } else {
       callback(new Error('Não permitido pelo CORS'));

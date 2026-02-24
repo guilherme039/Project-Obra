@@ -58,6 +58,20 @@ app.use(corsMiddleware);
 app.use(express.json({ limit: "10mb" }));
 app.use('/api', generalLimiter);
 
+// Vercel: lazy database init on first API request
+let dbInitialized = false;
+if (process.env.VERCEL) {
+    app.use(async (_req: express.Request, _res: express.Response, next: express.NextFunction) => {
+        if (!dbInitialized) {
+            dbInitialized = true;
+            await initializeDatabase().catch(err => {
+                console.error("❌ Lazy DB init failed:", err.message);
+            });
+        }
+        next();
+    });
+}
+
 // Auth middleware
 interface AuthPayload {
     userId: string;
@@ -1569,18 +1583,17 @@ app.use(errorHandler);
 
 async function startServer() {
     try {
-        // Initialize database first
-        const dbInitialized = await initializeDatabase();
-        if (!dbInitialized) {
-            console.error("⚠️ Failed to initialize database. Server will start but database features will be unavailable.");
-            // process.exit(1); // Removed to allow server to start
+        // Initialize database (skip on Vercel - lazy init on first request)
+        if (!process.env.VERCEL) {
+            const dbInitialized = await initializeDatabase();
+            if (!dbInitialized) {
+                console.error("⚠️ Failed to initialize database. Server will start but database features will be unavailable.");
+            }
         }
 
-        // Start server
         // Start server only if not on Vercel
-        let server: any;
         if (!process.env.VERCEL) {
-            server = app.listen(PORT, () => {
+            const server = app.listen(PORT, () => {
                 if (process.env.NODE_ENV === 'development') {
                     console.log(`🚀 ERP Server running on http://localhost:${PORT}`);
                     console.log(`📊 Health check: http://localhost:${PORT}/health`);
@@ -1588,34 +1601,34 @@ async function startServer() {
                     console.log(`🔐 Login with: ${adminEmail} / [senha padrão]`);
                 }
             });
+
+            // Graceful shutdown - only when real server exists
+            process.on('SIGTERM', async () => {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('🔄 SIGTERM received, shutting down gracefully...');
+                }
+                server.close(() => {
+                    prisma.$disconnect();
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('✅ Server closed');
+                    }
+                    process.exit(0);
+                });
+            });
+
+            process.on('SIGINT', async () => {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('🔄 SIGINT received, shutting down gracefully...');
+                }
+                server.close(() => {
+                    prisma.$disconnect();
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('✅ Server closed');
+                    }
+                    process.exit(0);
+                });
+            });
         }
-
-        // Graceful shutdown
-        process.on('SIGTERM', async () => {
-            if (process.env.NODE_ENV === 'development') {
-                console.log('🔄 SIGTERM received, shutting down gracefully...');
-            }
-            server.close(() => {
-                prisma.$disconnect();
-                if (process.env.NODE_ENV === 'development') {
-                    console.log('✅ Server closed');
-                }
-                process.exit(0);
-            });
-        });
-
-        process.on('SIGINT', async () => {
-            if (process.env.NODE_ENV === 'development') {
-                console.log('🔄 SIGINT received, shutting down gracefully...');
-            }
-            server.close(() => {
-                prisma.$disconnect();
-                if (process.env.NODE_ENV === 'development') {
-                    console.log('✅ Server closed');
-                }
-                process.exit(0);
-            });
-        });
 
     } catch (error) {
         console.error("❌ Failed to start server:", error);
@@ -1623,7 +1636,9 @@ async function startServer() {
     }
 }
 
-// Start the server
-startServer();
+// Start the server (only runs locally, not on Vercel)
+if (!process.env.VERCEL) {
+    startServer();
+}
 
 export default app;
