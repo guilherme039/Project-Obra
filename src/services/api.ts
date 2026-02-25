@@ -1152,42 +1152,116 @@ export const activityLogService = {
     }
 };
 
-// ── Users ────────────────────────────────────────────────
+// ── Users (fallback localStorage quando backend falha) ────────────────
 import { UserObra } from "@/types/erp";
+
+const LOCAL_USERS_KEY = "erp_local_users";
+
+function getLocalUsers(companyId: string): User[] {
+    try {
+        const raw = localStorage.getItem(LOCAL_USERS_KEY);
+        const map: Record<string, User[]> = raw ? JSON.parse(raw) : {};
+        return map[companyId] || [];
+    } catch { return []; }
+}
+
+function setLocalUsers(companyId: string, list: User[]): void {
+    try {
+        const raw = localStorage.getItem(LOCAL_USERS_KEY);
+        const map: Record<string, User[]> = raw ? JSON.parse(raw) : {};
+        map[companyId] = list;
+        localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(map));
+    } catch { }
+}
 
 export const usersService = {
     async getAll(companyId: string): Promise<User[]> {
         try {
-            return await fetchAPI<User[]>(`${API_BASE}/users`);
+            const backendUsers = await fetchAPI<User[]>(`${API_BASE}/users`);
+            // Merge with local users (avoid duplicates by email)
+            const localUsers = getLocalUsers(companyId);
+            const backendEmails = new Set(backendUsers.map(u => u.email.toLowerCase()));
+            const uniqueLocal = localUsers.filter(u => !backendEmails.has(u.email.toLowerCase()));
+            return [...backendUsers, ...uniqueLocal];
         } catch {
-            return [];
+            return getLocalUsers(companyId);
         }
     },
     async getById(id: string, companyId: string): Promise<User | undefined> {
         try {
             return await fetchAPI<User>(`${API_BASE}/users/${id}`);
-        } catch { return undefined; }
-    },
-    async create(item: any): Promise<User> {
-        try {
-            return await fetchAPI<User>(`${API_BASE}/users`, { method: "POST", body: JSON.stringify(item) });
         } catch {
-            return { ...item, id: "local-user-" + Date.now() } as User;
+            return getLocalUsers(companyId).find(u => u.id === id);
         }
     },
-    async update(id: string, _companyId: string, updates: Partial<User>): Promise<User | undefined> {
+    async create(item: any): Promise<User> {
+        const companyId = item.companyId;
+        try {
+            return await fetchAPI<User>(`${API_BASE}/users`, { method: "POST", body: JSON.stringify(item) });
+        } catch (err: any) {
+            // If backend returns 409 (email exists), try to link the existing user to this obra
+            if (err?.message?.includes("409") || err?.message?.includes("já cadastrado")) {
+                // Try to find and update the existing user's obraId
+                const allUsers = getLocalUsers(companyId);
+                const existing = allUsers.find(u => u.email.toLowerCase() === item.email.toLowerCase());
+                if (existing && item.obraId) {
+                    existing.obraId = item.obraId;
+                    setLocalUsers(companyId, allUsers);
+                    return existing;
+                }
+            }
+            // Save locally as fallback
+            const id = "local-user-" + Date.now();
+            const now = new Date().toISOString();
+            const newUser: User = {
+                id,
+                companyId,
+                name: item.name,
+                email: item.email,
+                role: item.role || "client",
+                obraId: item.obraId || undefined,
+                createdAt: now,
+            };
+            const list = getLocalUsers(companyId);
+            // Check for duplicate email locally
+            const existingLocal = list.find(u => u.email.toLowerCase() === item.email.toLowerCase());
+            if (existingLocal) {
+                // If user already exists locally, just update their obraId
+                if (item.obraId) {
+                    existingLocal.obraId = item.obraId;
+                }
+                setLocalUsers(companyId, list);
+                return existingLocal;
+            }
+            list.unshift(newUser);
+            setLocalUsers(companyId, list);
+            return newUser;
+        }
+    },
+    async update(id: string, companyId: string, updates: Partial<User>): Promise<User | undefined> {
         try {
             return await fetchAPI<User>(`${API_BASE}/users/${id}`, { method: "PUT", body: JSON.stringify(updates) });
-        } catch { return undefined; }
+        } catch {
+            const list = getLocalUsers(companyId);
+            const idx = list.findIndex(u => u.id === id);
+            if (idx === -1) return undefined;
+            list[idx] = { ...list[idx], ...updates };
+            setLocalUsers(companyId, list);
+            return list[idx];
+        }
     },
-    async delete(id: string, _companyId: string): Promise<boolean> {
+    async delete(id: string, companyId: string): Promise<boolean> {
         try {
             await fetchAPI(`${API_BASE}/users/${id}`, { method: "DELETE" });
             return true;
-        } catch { return false; }
+        } catch {
+            const list = getLocalUsers(companyId).filter(u => u.id !== id);
+            setLocalUsers(companyId, list);
+            return true;
+        }
     },
     async getByObra(obraId: string, companyId: string): Promise<User[]> {
         const all = await this.getAll(companyId);
-        return all.filter((u: User & { obraId?: string }) => u.obraId === obraId || u.role === "admin");
+        return all.filter((u: User & { obraId?: string }) => u.obraId === obraId);
     }
 };

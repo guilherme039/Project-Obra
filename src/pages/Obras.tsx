@@ -229,12 +229,17 @@ function ObraDetailModal({ obra, onClose }: { obra: Obra; onClose: () => void })
 
   const handleCreateUser = async (data: any) => {
     try {
-      await usersService.create({ ...data, companyId });
-      toast.success("Usuário criado com sucesso!");
+      const created = await usersService.create({ ...data, companyId });
+      if (created && created.id) {
+        toast.success("Usuário criado e vinculado com sucesso!");
+      } else {
+        toast.success("Usuário vinculado à obra!");
+      }
       setShowUserForm(false);
       setRefreshKey(k => k + 1);
-    } catch (e) {
-      toast.error("Erro ao criar usuário.");
+    } catch (e: any) {
+      const msg = e?.message || "Erro ao criar usuário.";
+      toast.error(msg);
     }
   };
 

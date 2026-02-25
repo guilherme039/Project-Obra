@@ -52,7 +52,18 @@ export default function ObraDetalhe() {
     const [activeTab, setActiveTab] = useState<TabId>("geral");
     const [refreshKey, setRefreshKey] = useState(0);
 
-    const { data: obra } = useAsyncData(() => obrasService.getById(id || "", companyId), [id, companyId, refreshKey]);
+    const { data: obra, loading } = useAsyncData(() => obrasService.getById(id || "", companyId), [id, companyId, refreshKey]);
+
+    if (loading) {
+        return (
+            <Layout>
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                    <div className="h-10 w-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+                    <p className="text-muted-foreground text-sm">Carregando detalhes da obra...</p>
+                </div>
+            </Layout>
+        );
+    }
 
     if (!obra) {
         return (

@@ -12,7 +12,7 @@ export interface User {
   name: string;
   email: string;
   password?: string; // Optional for frontend
-  role?: "admin" | "user";
+  role?: "admin" | "user" | "client";
   avatar?: string;
   obraId?: string;
   createdAt?: string;
