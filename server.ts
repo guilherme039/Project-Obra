@@ -1490,7 +1490,7 @@ app.get("/health", (req, res) => {
 
 // ============ STATIC FILES (PRODUCTION) ============
 
-if (process.env.NODE_ENV === "production") {
+if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
     const distPath = path.resolve(__dirname, "dist");
     app.use(express.static(distPath));
 
