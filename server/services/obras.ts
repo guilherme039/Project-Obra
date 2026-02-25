@@ -1,4 +1,4 @@
-import prisma from "../prisma";
+import prisma from "../prisma.js";
 
 // 7️⃣ SECURITY: Block delete if obra has lancamentos, etapas, or medições
 export async function validateObraDelete(obraId: string, companyId: string): Promise<void> {

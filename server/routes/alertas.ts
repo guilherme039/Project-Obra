@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
-import { authMiddleware } from "../middlewares/auth";
-import { gerarAlertas } from "../services/alertas";
+import { authMiddleware } from "../middlewares/auth.js";
+import { gerarAlertas } from "../services/alertas.js";
 
 const router = Router();
 router.use(authMiddleware);

@@ -4,15 +4,15 @@ import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import path from "path";
 import dotenv from "dotenv";
-import { corsMiddleware, helmetMiddleware, generalLimiter, loginLimiter, registerLimiter } from "./server/middlewares/security";
-import { errorHandler } from "./server/middlewares/errorHandler";
-import { requireAdmin } from "./server/middlewares/authorization";
-import { loginSchema, registerSchema } from "./server/schemas/auth";
-import { createObraSchema, updateObraSchema } from "./server/schemas/obra";
-import { createClienteSchema, updateClienteSchema } from "./server/schemas/cliente";
-import { createFornecedorSchema, updateFornecedorSchema } from "./server/schemas/fornecedor";
-import { createUserSchema, updateUserSchema } from "./server/schemas/user";
-import { getPaginationParams } from "./server/utils/pagination";
+import { corsMiddleware, helmetMiddleware, generalLimiter, loginLimiter, registerLimiter } from "./server/middlewares/security.js";
+import { errorHandler } from "./server/middlewares/errorHandler.js";
+import { requireAdmin } from "./server/middlewares/authorization.js";
+import { loginSchema, registerSchema } from "./server/schemas/auth.js";
+import { createObraSchema, updateObraSchema } from "./server/schemas/obra.js";
+import { createClienteSchema, updateClienteSchema } from "./server/schemas/cliente.js";
+import { createFornecedorSchema, updateFornecedorSchema } from "./server/schemas/fornecedor.js";
+import { createUserSchema, updateUserSchema } from "./server/schemas/user.js";
+import { getPaginationParams } from "./server/utils/pagination.js";
 
 // Load environment variables
 dotenv.config();

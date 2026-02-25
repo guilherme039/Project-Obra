@@ -1,4 +1,4 @@
-import prisma from "../prisma";
+import prisma from "../prisma.js";
 
 // 1️⃣ AUTO PROGRESS: Weighted average + auto status transitions
 export async function recalcularProgressoObra(obraId: string, companyId: string): Promise<void> {
@@ -9,7 +9,7 @@ export async function recalcularProgressoObra(obraId: string, companyId: string)
     const today = new Date().toISOString().split("T")[0];
 
     if (etapas.length === 0) {
-        await prisma.obra.update({ where: { id: obraId }, data: { progresso: 0 } });
+        await prisma.obra.update({ where: { id: obraId }, data: { progress: 0 } });
         return;
     }
 
@@ -17,21 +17,21 @@ export async function recalcularProgressoObra(obraId: string, companyId: string)
     const progressoPonderado = somaPrevisto > 0
         ? etapas.reduce((sum, e) => sum + (e.percentualPrevisto / somaPrevisto) * e.percentualExecutado, 0)
         : 0;
-    const progresso = Math.round(progressoPonderado);
+    const progress = Math.round(progressoPonderado);
 
     const todasConcluidas = etapas.every((e) => e.percentualExecutado >= 100);
     let status = obra.status;
-    if (todasConcluidas && progresso >= 100) {
+    if (todasConcluidas && progress >= 100) {
         status = "Concluida";
-    } else if (obra.dataPrevisaoTermino < today && progresso < 100 && status !== "Pausada" && status !== "Cancelada") {
+    } else if (obra.endDate && obra.endDate < today && progress < 100 && status !== "Pausada" && status !== "Cancelada") {
         status = "Atrasada";
-    } else if (status === "Concluida" && progresso < 100) {
+    } else if (status === "Concluida" && progress < 100) {
         status = "Em andamento";
-    } else if (status === "Atrasada" && obra.dataPrevisaoTermino >= today) {
+    } else if (status === "Atrasada" && obra.endDate && obra.endDate >= today) {
         status = "Em andamento";
     }
 
-    await prisma.obra.update({ where: { id: obraId }, data: { progresso, status } });
+    await prisma.obra.update({ where: { id: obraId }, data: { progress, status } });
 }
 
 // 2️⃣ Etapa validation

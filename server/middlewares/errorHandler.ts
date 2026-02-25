@@ -5,7 +5,7 @@ export function errorHandler(
   err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) {
   // Log do erro (em produção, usar logger adequado)
   if (process.env.NODE_ENV === 'development') {

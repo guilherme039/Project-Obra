@@ -1,4 +1,4 @@
-import prisma from "../prisma";
+import prisma from "../prisma.js";
 
 // 5️⃣ MODULE INTEGRATION: Approve → Lancamento + ListaCompra
 export async function aprovarCotacao(id: string, companyId: string) {
@@ -6,7 +6,7 @@ export async function aprovarCotacao(id: string, companyId: string) {
     if (!cotacao) return null;
 
     const obra = await prisma.obra.findFirst({ where: { id: cotacao.obraId, companyId } });
-    const obraNome = obra?.nome || "";
+    const obraNome = obra?.name || "";
 
     const lancamento = await prisma.lancamento.create({
         data: {

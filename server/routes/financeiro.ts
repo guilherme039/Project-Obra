@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
-import { authMiddleware } from "../middlewares/auth";
-import { calcularResumo, calcularDesvio, calcularFluxoCaixaFuturo, filtrarPorPeriodo } from "../services/financeiro";
+import { authMiddleware } from "../middlewares/auth.js";
+import { calcularResumo, calcularDesvio, calcularFluxoCaixaFuturo, filtrarPorPeriodo } from "../services/financeiro.js";
 
 const router = Router();
 router.use(authMiddleware);

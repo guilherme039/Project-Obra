@@ -1,5 +1,5 @@
-import prisma from "../prisma";
-import { calcularDesvio, calcularFluxoCaixaFuturo } from "./financeiro";
+import prisma from "../prisma.js";
+import { calcularDesvio, calcularFluxoCaixaFuturo } from "./financeiro.js";
 
 interface Alerta {
     tipo: string;
@@ -40,11 +40,11 @@ export async function gerarAlertas(obraId: string, companyId: string): Promise<A
 
     // 3. Obra globalmente atrasada
     const obra = await prisma.obra.findFirst({ where: { id: obraId, companyId } });
-    if (obra && obra.dataPrevisaoTermino < today && obra.progresso < 100 && obra.status !== "Cancelada" && obra.status !== "Pausada") {
-        const diasAtraso = Math.ceil((nowMs - new Date(obra.dataPrevisaoTermino).getTime()) / 86400000);
+    if (obra && obra.endDate && obra.endDate < today && obra.progress < 100 && obra.status !== "Cancelada" && obra.status !== "Pausada") {
+        const diasAtraso = Math.ceil((nowMs - new Date(obra.endDate!).getTime()) / 86400000);
         alertas.push({
             tipo: "obra", titulo: `Obra atrasada: ${diasAtraso} dia(s) além do prazo`,
-            descricao: `Previsão: ${obra.dataPrevisaoTermino} | Progresso: ${obra.progresso}%`,
+            descricao: `Previsão: ${obra.endDate} | Progresso: ${obra.progress}%`,
             severidade: "critical",
         });
     }
@@ -80,7 +80,7 @@ export async function gerarAlertas(obraId: string, companyId: string): Promise<A
     // 7. Cash flow risk
     const fluxo = await calcularFluxoCaixaFuturo(obraId, companyId);
     if (fluxo.risco === "Alto") {
-        alertas.push({ tipo: "desvio", titulo: `Risco financeiro ALTO`, descricao: `Projeção total: R$ ${fluxo.projecaoTotal.toFixed(2)} (${Math.round((fluxo.projecaoTotal / ((obra?.orcamentoTotal || 1))) * 100)}% do orçamento)`, severidade: "critical" });
+        alertas.push({ tipo: "desvio", titulo: `Risco financeiro ALTO`, descricao: `Projeção total: R$ ${fluxo.projecaoTotal.toFixed(2)} (${Math.round((fluxo.projecaoTotal / ((obra?.totalCost || 1))) * 100)}% do orçamento)`, severidade: "critical" });
     }
 
     return alertas;

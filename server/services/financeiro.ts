@@ -1,11 +1,11 @@
-import prisma from "../prisma";
+import prisma from "../prisma.js";
 
 // 3️⃣ FINANCIAL DEVIATION
 export async function calcularResumo(obraId: string, companyId: string) {
     const obra = await prisma.obra.findFirst({ where: { id: obraId, companyId } });
     const lancamentos = await prisma.lancamento.findMany({ where: { obraId, companyId } });
 
-    const totalOrcado = obra?.orcamentoTotal || 0;
+    const totalOrcado = obra?.totalCost || 0;
     const totalPago = lancamentos.filter((l) => l.status === "Pago").reduce((a, l) => a + l.valor, 0);
     const totalPendente = lancamentos.filter((l) => l.status === "Pendente" || l.status === "Atrasado").reduce((a, l) => a + l.valor, 0);
     const saldoRestante = totalOrcado - totalPago - totalPendente;
@@ -36,7 +36,7 @@ export async function calcularFluxoCaixaFuturo(obraId: string, companyId: string
 
     const projecaoTotal = totalAPagar + comprasPlanejadas + medicoesPendentes;
     const obra = await prisma.obra.findFirst({ where: { id: obraId, companyId } });
-    const orcamento = obra?.orcamentoTotal || 0;
+    const orcamento = obra?.totalCost || 0;
     const risco = orcamento > 0
         ? (projecaoTotal / orcamento > 0.9 ? "Alto" : projecaoTotal / orcamento > 0.6 ? "Médio" : "Baixo")
         : "Baixo";

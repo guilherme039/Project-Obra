@@ -1,4 +1,4 @@
-import prisma from "./prisma";
+import prisma from "./prisma.js";
 import bcrypt from "bcryptjs";
 
 async function seed() {

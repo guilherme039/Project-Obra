@@ -1,4 +1,4 @@
-import prisma from "../prisma";
+import prisma from "../prisma.js";
 
 // 5️⃣ Medição → Pagar → gera lançamento automático
 export async function pagarMedicao(id: string, companyId: string) {
@@ -6,7 +6,7 @@ export async function pagarMedicao(id: string, companyId: string) {
     if (!medicao || medicao.status === "Pago") return null;
 
     const obra = await prisma.obra.findFirst({ where: { id: medicao.obraId, companyId } });
-    const obraNome = obra?.nome || "";
+    const obraNome = obra?.name || "";
 
     const lancamento = await prisma.lancamento.create({
         data: {

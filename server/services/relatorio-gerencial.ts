@@ -1,6 +1,6 @@
-import prisma from "../prisma";
-import { calcularResumo, calcularDesvio, calcularFluxoCaixaFuturo } from "./financeiro";
-import { gerarAlertas } from "./alertas";
+import prisma from "../prisma.js";
+import { calcularResumo, calcularDesvio, calcularFluxoCaixaFuturo } from "./financeiro.js";
+import { gerarAlertas } from "./alertas.js";
 
 // 8️⃣ Consolidated management report
 export async function gerarRelatorio(obraId: string, companyId: string) {
@@ -20,8 +20,8 @@ export async function gerarRelatorio(obraId: string, companyId: string) {
 
     return {
         obraId,
-        obraNome: obra.nome,
-        progressoFisico: obra.progresso,
+        obraNome: obra.name,
+        progressoFisico: obra.progress,
         progressoFinanceiro: resumoFinanceiro.percentualExecutado,
         desvioOrcamentario: desvio.desvio,
         desvioPercent: desvio.desvioPercent,

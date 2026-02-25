@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
-import { authMiddleware } from "../middlewares/auth";
-import { gerarRelatorio } from "../services/relatorio-gerencial";
+import { authMiddleware } from "../middlewares/auth.js";
+import { gerarRelatorio } from "../services/relatorio-gerencial.js";
 
 const router = Router();
 router.use(authMiddleware);

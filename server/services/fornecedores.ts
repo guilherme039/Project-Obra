@@ -1,4 +1,4 @@
-import prisma from "../prisma";
+import prisma from "../prisma.js";
 
 // 7️⃣ SECURITY: Block delete if cotação aprovada or despesas exist
 export async function validateFornecedorDelete(fornecedorId: string, companyId: string): Promise<void> {

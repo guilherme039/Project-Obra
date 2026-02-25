@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
-import prisma from "../prisma";
-import { authMiddleware } from "../middlewares/auth";
-import { validateFornecedorDelete } from "../services/fornecedores";
+import prisma from "../prisma.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { validateFornecedorDelete } from "../services/fornecedores.js";
 
 const router = Router();
 router.use(authMiddleware);

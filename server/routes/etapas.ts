@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
-import prisma from "../prisma";
-import { authMiddleware } from "../middlewares/auth";
-import { recalcularProgressoObra, validateEtapaPercentual, validateEtapaDelete } from "../services/etapas";
+import prisma from "../prisma.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { recalcularProgressoObra, validateEtapaPercentual, validateEtapaDelete } from "../services/etapas.js";
 
 const router = Router();
 router.use(authMiddleware);

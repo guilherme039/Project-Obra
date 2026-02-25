@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
-import prisma from "../prisma";
-import { authMiddleware } from "../middlewares/auth";
-import { autoUpdateOverdueStatus } from "../services/financeiro";
+import prisma from "../prisma.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { autoUpdateOverdueStatus } from "../services/financeiro.js";
 
 const router = Router();
 router.use(authMiddleware);
